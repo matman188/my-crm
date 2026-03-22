@@ -82,6 +82,48 @@ class AuthenticationFlowTests(TestCase):
         self.assertContains(response, "crm_admin")
         self.assertContains(response, "agent")
 
+    def test_users_page_sorts_alphabetically_by_username(self):
+        admin_user = get_user_model().objects.create_superuser(
+            username="crm_admin",
+            email="admin@example.com",
+            password="adminpass123",
+        )
+        get_user_model().objects.create_user(username="charlie", password="testpass123")
+        get_user_model().objects.create_user(username="Alpha", password="testpass123")
+        get_user_model().objects.create_user(username="bravo", password="testpass123")
+        self.client.force_login(admin_user)
+
+        response = self.client.get(reverse("users"))
+        content = response.content.decode()
+
+        self.assertLess(content.index("@Alpha"), content.index("@bravo"))
+        self.assertLess(content.index("@bravo"), content.index("@charlie"))
+
+    def test_users_page_can_search_for_user(self):
+        admin_user = get_user_model().objects.create_superuser(
+            username="crm_admin",
+            email="admin@example.com",
+            password="adminpass123",
+        )
+        get_user_model().objects.create_user(
+            username="agent-jane",
+            first_name="Jane",
+            email="jane@example.com",
+            password="testpass123",
+        )
+        get_user_model().objects.create_user(
+            username="agent-john",
+            first_name="John",
+            email="john@example.com",
+            password="testpass123",
+        )
+        self.client.force_login(admin_user)
+
+        response = self.client.get(reverse("users"), {"q": "jane"})
+
+        self.assertContains(response, "agent-jane")
+        self.assertNotContains(response, "agent-john")
+
     def test_superuser_can_create_user(self):
         admin_user = get_user_model().objects.create_superuser(
             username="crm_admin",

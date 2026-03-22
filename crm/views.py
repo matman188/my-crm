@@ -1,6 +1,8 @@
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
+from django.db.models import Q
+from django.db.models.functions import Lower
 from django.http import HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 
@@ -50,8 +52,26 @@ def users(request):
     if not request.user.is_superuser:
         return HttpResponseForbidden("Only superusers can create system users.")
 
-    existing_users = get_user_model().objects.order_by("username")
-    return render(request, "crm/users.html", {"existing_users": existing_users})
+    search_query = request.GET.get("q", "").strip()
+    existing_users = get_user_model().objects.all()
+
+    if search_query:
+        existing_users = existing_users.filter(
+            Q(username__icontains=search_query)
+            | Q(first_name__icontains=search_query)
+            | Q(last_name__icontains=search_query)
+            | Q(email__icontains=search_query)
+        )
+
+    existing_users = existing_users.order_by(Lower("username"), "id")
+    return render(
+        request,
+        "crm/users.html",
+        {
+            "existing_users": existing_users,
+            "search_query": search_query,
+        },
+    )
 
 
 @login_required
