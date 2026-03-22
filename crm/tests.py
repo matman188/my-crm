@@ -78,7 +78,8 @@ class AuthenticationFlowTests(TestCase):
                 "first_name": "Jane",
                 "last_name": "Doe",
                 "email": "jane@example.com",
-                "phone": "1234567890",
+                "primary_phone": "1234567890",
+                "secondary_phone": "0987654321",
                 "company": "Acme",
                 "notes": "Important client",
             },
@@ -89,6 +90,8 @@ class AuthenticationFlowTests(TestCase):
         customer = Customer.objects.get(first_name="Jane", last_name="Doe")
         self.assertEqual(customer.owner, user)
         self.assertEqual(customer.company, "Acme")
+        self.assertEqual(customer.primary_phone, "1234567890")
+        self.assertEqual(customer.secondary_phone, "0987654321")
 
     def test_logged_in_user_can_edit_customer(self):
         user = get_user_model().objects.create_user(
@@ -104,7 +107,8 @@ class AuthenticationFlowTests(TestCase):
                 "first_name": "Janet",
                 "last_name": "Doe",
                 "email": "janet@example.com",
-                "phone": "5550001",
+                "primary_phone": "5550001",
+                "secondary_phone": "5550002",
                 "company": "Acme",
                 "notes": "Updated notes",
             },
@@ -115,6 +119,8 @@ class AuthenticationFlowTests(TestCase):
         customer.refresh_from_db()
         self.assertEqual(customer.first_name, "Janet")
         self.assertEqual(customer.email, "janet@example.com")
+        self.assertEqual(customer.primary_phone, "5550001")
+        self.assertEqual(customer.secondary_phone, "5550002")
 
     def test_logged_in_user_can_delete_customer(self):
         user = get_user_model().objects.create_user(

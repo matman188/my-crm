@@ -61,10 +61,13 @@
                                 {% if customer.email %}
                                     <div class="user-email">{{ customer.email }}</div>
                                 {% endif %}
-                                {% if customer.phone %}
-                                    <div class="user-email">{{ customer.phone }}</div>
+                                {% if customer.primary_phone %}
+                                    <div class="user-email">Primary: {{ customer.primary_phone }}</div>
                                 {% endif %}
-                                {% if not customer.email and not customer.phone %}
+                                {% if customer.secondary_phone %}
+                                    <div class="user-email">Secondary: {{ customer.secondary_phone }}</div>
+                                {% endif %}
+                                {% if not customer.email and not customer.primary_phone and not customer.secondary_phone %}
                                     <span class="meta">No contact info</span>
                                 {% endif %}
                             </td>

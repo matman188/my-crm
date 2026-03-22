@@ -16,7 +16,56 @@
     <section class="panel">
         <form method="post" class="form-grid">
             {% csrf_token %}
-            {{ form.as_p }}
+            {% if form.non_field_errors %}
+                <div class="non-field-errors">
+                    {{ form.non_field_errors }}
+                </div>
+            {% endif %}
+
+            <div class="form-layout">
+                <div class="form-field">
+                    <label for="{{ form.first_name.id_for_label }}">First name</label>
+                    {{ form.first_name }}
+                    {{ form.first_name.errors }}
+                </div>
+
+                <div class="form-field">
+                    <label for="{{ form.last_name.id_for_label }}">Last name</label>
+                    {{ form.last_name }}
+                    {{ form.last_name.errors }}
+                </div>
+
+                <div class="form-field">
+                    <label for="{{ form.email.id_for_label }}">Email</label>
+                    {{ form.email }}
+                    {{ form.email.errors }}
+                </div>
+
+                <div class="form-field">
+                    <label for="{{ form.primary_phone.id_for_label }}">Primary phone</label>
+                    {{ form.primary_phone }}
+                    {{ form.primary_phone.errors }}
+                </div>
+
+                <div class="form-field">
+                    <label for="{{ form.secondary_phone.id_for_label }}">Secondary phone</label>
+                    {{ form.secondary_phone }}
+                    {{ form.secondary_phone.errors }}
+                </div>
+
+                <div class="form-field">
+                    <label for="{{ form.company.id_for_label }}">Company</label>
+                    {{ form.company }}
+                    {{ form.company.errors }}
+                </div>
+
+                <div class="form-field full">
+                    <label for="{{ form.notes.id_for_label }}">Notes</label>
+                    {{ form.notes }}
+                    {{ form.notes.errors }}
+                </div>
+            </div>
+
             <button class="button" type="submit">{{ submit_label }}</button>
         </form>
     </section>

@@ -6,7 +6,8 @@ class Customer(models.Model):
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100, blank=True)
     email = models.EmailField(blank=True)
-    phone = models.CharField(max_length=30, blank=True)
+    primary_phone = models.CharField(max_length=30, blank=True)
+    secondary_phone = models.CharField(max_length=30, blank=True)
     company = models.CharField(max_length=150, blank=True)
     notes = models.TextField(blank=True)
     owner = models.ForeignKey(

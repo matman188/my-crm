@@ -32,7 +32,8 @@ def customers(request):
             | Q(last_name__icontains=search_query)
             | Q(company__icontains=search_query)
             | Q(email__icontains=search_query)
-            | Q(phone__icontains=search_query)
+            | Q(primary_phone__icontains=search_query)
+            | Q(secondary_phone__icontains=search_query)
         )
 
     existing_customers = existing_customers.order_by(
