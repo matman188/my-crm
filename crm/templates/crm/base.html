@@ -80,6 +80,109 @@
             color: var(--muted);
         }
 
+        .message-list {
+            margin: 0 0 20px;
+            padding: 0;
+            list-style: none;
+        }
+
+        .message {
+            margin-bottom: 12px;
+            padding: 12px 14px;
+            border-radius: 10px;
+            background: #edf7ed;
+            color: #1f5130;
+        }
+
+        .message.error {
+            background: #fdecec;
+            color: #7a1f1f;
+        }
+
+        .form-grid {
+            display: grid;
+            gap: 16px;
+        }
+
+        .form-grid p {
+            margin: 0;
+        }
+
+        .form-grid input {
+            width: 100%;
+            margin-top: 6px;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            font: inherit;
+        }
+
+        .form-grid input[type="checkbox"] {
+            width: auto;
+            margin-right: 8px;
+        }
+
+        .form-grid ul {
+            margin: 6px 0 0;
+            padding-left: 18px;
+            color: var(--muted);
+        }
+
+        .two-column {
+            display: grid;
+            grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+            gap: 24px;
+            align-items: start;
+        }
+
+        .panel {
+            padding: 20px;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: #fbfdff;
+        }
+
+        .panel h3 {
+            margin-top: 0;
+        }
+
+        .user-list {
+            margin: 0;
+            padding-left: 18px;
+        }
+
+        .user-list li + li {
+            margin-top: 10px;
+        }
+
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .toolbar h2 {
+            margin: 0;
+        }
+
+        .button-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .button-link {
+            display: inline-block;
+            border-radius: 10px;
+            padding: 10px 16px;
+            background: var(--panel-accent);
+            color: #fff;
+            text-decoration: none;
+        }
+
         .logout-form {
             margin-top: 24px;
         }
@@ -101,6 +204,10 @@
             .sidebar {
                 padding-bottom: 20px;
             }
+
+            .two-column {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -111,11 +218,19 @@
             <nav class="nav" aria-label="Primary">
                 <a href="{% url 'home' %}">Dashboard</a>
                 <a href="{% url 'customers' %}">Customers</a>
+                <a href="{% url 'users' %}">Users</a>
             </nav>
         </aside>
 
         <main class="content">
             <section class="card">
+                {% if messages %}
+                    <ul class="message-list">
+                        {% for message in messages %}
+                            <li class="message{% if message.tags %} {{ message.tags }}{% endif %}">{{ message }}</li>
+                        {% endfor %}
+                    </ul>
+                {% endif %}
                 {% block content %}{% endblock %}
                 <form class="logout-form" method="post" action="{% url 'logout' %}">
                     {% csrf_token %}

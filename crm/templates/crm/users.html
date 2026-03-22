@@ -1,0 +1,46 @@
+{% extends "crm/base.html" %}
+
+{% block title %}Users{% endblock %}
+
+{% block content %}
+    <div class="toolbar">
+        <div>
+            <h2>System Users</h2>
+            <p class="meta">Manage the login accounts for people who use the CRM.</p>
+        </div>
+        <a class="button-link" href="{% url 'create_user' %}">Create user</a>
+    </div>
+
+    <section class="panel">
+        <h3>Existing Users</h3>
+        <ul class="user-list">
+            {% for user in existing_users %}
+                <li>
+                    <strong>{{ user.username }}</strong>
+                    {% if user.email %} - {{ user.email }}{% endif %}
+                    {% if user.is_superuser %}
+                        <div class="meta">Superuser</div>
+                    {% elif user.is_staff %}
+                        <div class="meta">Staff user</div>
+                    {% else %}
+                        <div class="meta">Standard user</div>
+                    {% endif %}
+                    <div class="button-row">
+                        <a class="button-link" href="{% url 'edit_user' user.id %}">Edit</a>
+                        <a class="button-link" href="{% url 'change_user_password' user.id %}">Change Password</a>
+                        {% if user.is_superuser %}
+                            <span class="meta">Delete disabled for superusers. Access flags are protected on edit.</span>
+                        {% else %}
+                            <form method="post" action="{% url 'delete_user' user.id %}">
+                                {% csrf_token %}
+                                <button class="button" type="submit">Delete</button>
+                            </form>
+                        {% endif %}
+                    </div>
+                </li>
+            {% empty %}
+                <li>No users yet.</li>
+            {% endfor %}
+        </ul>
+    </section>
+{% endblock %}

@@ -19,11 +19,24 @@ from django.contrib import admin
 from django.contrib.auth import views as auth_views
 from django.urls import path
 
-from crm.views import customers, home
+from crm.views import (
+    change_user_password,
+    create_user,
+    customers,
+    delete_user,
+    edit_user,
+    home,
+    users,
+)
 
 urlpatterns = [
     path("", home, name="home"),
     path("customers/", customers, name="customers"),
+    path("users/", users, name="users"),
+    path("users/create/", create_user, name="create_user"),
+    path("users/<int:user_id>/edit/", edit_user, name="edit_user"),
+    path("users/<int:user_id>/change-password/", change_user_password, name="change_user_password"),
+    path("users/<int:user_id>/delete/", delete_user, name="delete_user"),
     path("login/", auth_views.LoginView.as_view(), name="login"),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
     path("admin/", admin.site.urls),
