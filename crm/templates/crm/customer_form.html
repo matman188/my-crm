@@ -1,0 +1,23 @@
+{% extends "crm/base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+{% block page_title %}{{ page_title }}{% endblock %}
+{% block page_copy %}Capture the customer details your team needs for follow-up and relationship tracking.{% endblock %}
+
+{% block content %}
+    <div class="toolbar">
+        <div>
+            <h2>{{ page_title }}</h2>
+            <p class="meta">{{ form_description }}</p>
+        </div>
+        <a class="button-link" href="{% url 'customers' %}">Back to customers</a>
+    </div>
+
+    <section class="panel">
+        <form method="post" class="form-grid">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button class="button" type="submit">{{ submit_label }}</button>
+        </form>
+    </section>
+{% endblock %}

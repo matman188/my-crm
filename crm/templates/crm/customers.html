@@ -5,7 +5,94 @@
 {% block page_copy %}A home for your customer list, notes, and relationship history.{% endblock %}
 
 {% block content %}
-    <h2>Customers</h2>
-    <p class="meta">This is the starting point for your customer records.</p>
-    <p>You can add your customer list here next, once we create the model and views for it.</p>
+    <div class="toolbar">
+        <div>
+            <h2>Customer Directory</h2>
+            <p class="meta page-intro">Keep customer records organized and easy to update as your team works through sales and support activity.</p>
+        </div>
+        <a class="button-link" href="{% url 'create_customer' %}">Create customer</a>
+    </div>
+
+    <div class="search-toolbar">
+        <form method="get" class="search-form">
+            <input
+                class="search-input"
+                type="search"
+                name="q"
+                value="{{ search_query }}"
+                placeholder="Search by name, company, email, or phone"
+            >
+            <button class="button" type="submit">Search</button>
+            {% if search_query %}
+                <a class="button-link" href="{% url 'customers' %}">Clear</a>
+            {% endif %}
+        </form>
+    </div>
+
+    <div class="data-table-shell">
+        {% if existing_customers %}
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Customer</th>
+                        <th>Company</th>
+                        <th>Contact</th>
+                        <th>Owner</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for customer in existing_customers %}
+                        <tr>
+                            <td>
+                                <div class="user-name">{{ customer.first_name }}{% if customer.last_name %} {{ customer.last_name }}{% endif %}</div>
+                                {% if customer.notes %}
+                                    <div class="user-email">{{ customer.notes|truncatechars:90 }}</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if customer.company %}
+                                    <span class="role-badge standard">{{ customer.company }}</span>
+                                {% else %}
+                                    <span class="meta">No company</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if customer.email %}
+                                    <div class="user-email">{{ customer.email }}</div>
+                                {% endif %}
+                                {% if customer.phone %}
+                                    <div class="user-email">{{ customer.phone }}</div>
+                                {% endif %}
+                                {% if not customer.email and not customer.phone %}
+                                    <span class="meta">No contact info</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if customer.owner %}
+                                    <span class="status-pill">{{ customer.owner.get_full_name|default:customer.owner.username }}</span>
+                                {% else %}
+                                    <span class="meta">Unassigned</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="button-row">
+                                    <a class="button-link" href="{% url 'edit_customer' customer.id %}">Edit</a>
+                                    <form method="post" action="{% url 'delete_customer' customer.id %}">
+                                        {% csrf_token %}
+                                        <button class="button danger" type="submit">Delete</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <div class="empty-state">
+                <h3>No customers yet</h3>
+                <p>Create your first customer record to start building out the CRM.</p>
+            </div>
+        {% endif %}
+    </div>
 {% endblock %}

@@ -485,7 +485,7 @@
             <p class="sidebar-copy">Keep your customer and team activity organized in one place.</p>
             <nav class="nav" aria-label="Primary">
                 <a class="{% if request.resolver_match.url_name == 'home' %}active{% endif %}" href="{% url 'home' %}">Dashboard</a>
-                <a class="{% if request.resolver_match.url_name == 'customers' %}active{% endif %}" href="{% url 'customers' %}">Customers</a>
+                <a class="{% if request.resolver_match.url_name == 'customers' or request.resolver_match.url_name == 'create_customer' or request.resolver_match.url_name == 'edit_customer' %}active{% endif %}" href="{% url 'customers' %}">Customers</a>
                 <a class="{% if request.resolver_match.url_name == 'users' or request.resolver_match.url_name == 'create_user' or request.resolver_match.url_name == 'edit_user' or request.resolver_match.url_name == 'change_user_password' %}active{% endif %}" href="{% url 'users' %}">Users</a>
             </nav>
         </aside>
