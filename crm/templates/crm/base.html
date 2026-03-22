@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}CRM{% endblock %}</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --bg: #f4f1ea;
+            --panel: #1d3557;
+            --panel-accent: #457b9d;
+            --text: #1f2933;
+            --muted: #52606d;
+            --surface: #ffffff;
+            --border: #d9e2ec;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #f8f6f1 0%, #eef4f8 100%);
+            color: var(--text);
+        }
+
+        .app-shell {
+            min-height: 100vh;
+            display: grid;
+            grid-template-columns: 240px 1fr;
+        }
+
+        .sidebar {
+            padding: 32px 20px;
+            background: linear-gradient(180deg, var(--panel) 0%, #16324f 100%);
+            color: #f8fbff;
+        }
+
+        .brand {
+            margin: 0 0 32px;
+            font-size: 1.6rem;
+        }
+
+        .nav {
+            display: grid;
+            gap: 10px;
+        }
+
+        .nav a {
+            display: block;
+            padding: 12px 14px;
+            border-radius: 10px;
+            color: inherit;
+            text-decoration: none;
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .nav a:hover,
+        .nav a:focus-visible {
+            background: rgba(255, 255, 255, 0.16);
+        }
+
+        .content {
+            padding: 32px;
+        }
+
+        .card {
+            max-width: 960px;
+            padding: 28px;
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            background: var(--surface);
+            box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08);
+        }
+
+        .meta {
+            color: var(--muted);
+        }
+
+        .logout-form {
+            margin-top: 24px;
+        }
+
+        .button {
+            border: 0;
+            border-radius: 10px;
+            padding: 10px 16px;
+            background: var(--panel-accent);
+            color: #fff;
+            cursor: pointer;
+        }
+
+        @media (max-width: 800px) {
+            .app-shell {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                padding-bottom: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <h1 class="brand">My CRM</h1>
+            <nav class="nav" aria-label="Primary">
+                <a href="{% url 'home' %}">Dashboard</a>
+                <a href="{% url 'customers' %}">Customers</a>
+            </nav>
+        </aside>
+
+        <main class="content">
+            <section class="card">
+                {% block content %}{% endblock %}
+                <form class="logout-form" method="post" action="{% url 'logout' %}">
+                    {% csrf_token %}
+                    <button class="button" type="submit">Log out</button>
+                </form>
+            </section>
+        </main>
+    </div>
+</body>
+</html>

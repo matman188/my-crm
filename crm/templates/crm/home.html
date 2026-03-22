@@ -1,16 +1,9 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>CRM Home</title>
-</head>
-<body>
-    <h1>CRM Dashboard</h1>
-    <p>You are signed in as {{ request.user.username }}.</p>
-    <form method="post" action="{% url 'logout' %}">
-        {% csrf_token %}
-        <button type="submit">Log out</button>
-    </form>
-</body>
-</html>
+{% extends "crm/base.html" %}
+
+{% block title %}CRM Dashboard{% endblock %}
+
+{% block content %}
+    <h2>CRM Dashboard</h2>
+    <p class="meta">You are signed in as {{ request.user.username }}.</p>
+    <p>Use the sidebar to move between sections of the CRM.</p>
+{% endblock %}
