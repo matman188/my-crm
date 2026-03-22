@@ -17,6 +17,7 @@ class AuthenticationFlowTests(TestCase):
     def test_home_shows_sidebar_link_for_logged_in_user(self):
         user = get_user_model().objects.create_user(
             username="agent",
+            first_name="Alex",
             password="testpass123",
         )
         self.client.force_login(user)
@@ -24,11 +25,37 @@ class AuthenticationFlowTests(TestCase):
         response = self.client.get(reverse("home"))
 
         self.assertContains(response, reverse("customers"))
+        self.assertContains(response, "Alex")
+        self.assertContains(response, reverse("edit_profile"))
 
     def test_customers_page_requires_login(self):
         response = self.client.get(reverse("customers"))
 
         self.assertRedirects(response, "/login/?next=/customers/")
+
+    def test_user_can_update_own_profile(self):
+        user = get_user_model().objects.create_user(
+            username="agent",
+            email="agent@example.com",
+            password="testpass123",
+        )
+        self.client.force_login(user)
+
+        response = self.client.post(
+            reverse("edit_profile"),
+            {
+                "username": "agent-updated",
+                "email": "updated@example.com",
+                "first_name": "Alex",
+                "last_name": "Morgan",
+            },
+            follow=True,
+        )
+
+        self.assertRedirects(response, reverse("home"))
+        user.refresh_from_db()
+        self.assertEqual(user.username, "agent-updated")
+        self.assertEqual(user.first_name, "Alex")
 
     def test_users_page_requires_login(self):
         response = self.client.get(reverse("users"))

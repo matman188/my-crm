@@ -1,46 +1,78 @@
 {% extends "crm/base.html" %}
 
 {% block title %}Users{% endblock %}
+{% block page_title %}Users{% endblock %}
+{% block page_copy %}Create accounts, manage access, and keep your team organized.{% endblock %}
 
 {% block content %}
     <div class="toolbar">
         <div>
-            <h2>System Users</h2>
-            <p class="meta">Manage the login accounts for people who use the CRM.</p>
+            <h2>Team Directory</h2>
+            <p class="meta page-intro">Manage the login accounts for people who use the CRM. Superusers remain protected from deletion, and their critical access flags stay locked down.</p>
         </div>
         <a class="button-link" href="{% url 'create_user' %}">Create user</a>
     </div>
 
-    <section class="panel">
-        <h3>Existing Users</h3>
-        <ul class="user-list">
-            {% for user in existing_users %}
-                <li>
-                    <strong>{{ user.username }}</strong>
-                    {% if user.email %} - {{ user.email }}{% endif %}
-                    {% if user.is_superuser %}
-                        <div class="meta">Superuser</div>
-                    {% elif user.is_staff %}
-                        <div class="meta">Staff user</div>
-                    {% else %}
-                        <div class="meta">Standard user</div>
-                    {% endif %}
-                    <div class="button-row">
-                        <a class="button-link" href="{% url 'edit_user' user.id %}">Edit</a>
-                        <a class="button-link" href="{% url 'change_user_password' user.id %}">Change Password</a>
-                        {% if user.is_superuser %}
-                            <span class="meta">Delete disabled for superusers. Access flags are protected on edit.</span>
-                        {% else %}
-                            <form method="post" action="{% url 'delete_user' user.id %}">
-                                {% csrf_token %}
-                                <button class="button" type="submit">Delete</button>
-                            </form>
-                        {% endif %}
-                    </div>
-                </li>
-            {% empty %}
-                <li>No users yet.</li>
-            {% endfor %}
-        </ul>
-    </section>
+    <div class="data-table-shell">
+        {% if existing_users %}
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>User</th>
+                        <th>Role</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in existing_users %}
+                        <tr>
+                            <td>
+                                <div class="user-name">{{ user.get_full_name|default:user.username }}</div>
+                                <div class="user-email">@{{ user.username }}</div>
+                                {% if user.email %}
+                                    <div class="user-email">{{ user.email }}</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if user.is_superuser %}
+                                    <span class="role-badge superuser">Superuser</span>
+                                {% elif user.is_staff %}
+                                    <span class="role-badge">Staff user</span>
+                                {% else %}
+                                    <span class="role-badge standard">Standard user</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if user.is_active %}
+                                    <span class="status-pill">Active</span>
+                                {% else %}
+                                    <span class="status-pill inactive">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="button-row">
+                                    <a class="button-link" href="{% url 'edit_user' user.id %}">Edit</a>
+                                    <a class="button-link" href="{% url 'change_user_password' user.id %}">Change Password</a>
+                                    {% if user.is_superuser %}
+                                        <span class="meta">Delete disabled</span>
+                                    {% else %}
+                                        <form method="post" action="{% url 'delete_user' user.id %}">
+                                            {% csrf_token %}
+                                            <button class="button danger" type="submit">Delete</button>
+                                        </form>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <div class="empty-state">
+                <h3>No users yet</h3>
+                <p>Create your first team member account to start using the CRM together.</p>
+            </div>
+        {% endif %}
+    </div>
 {% endblock %}

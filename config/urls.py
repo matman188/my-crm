@@ -24,6 +24,7 @@ from crm.views import (
     create_user,
     customers,
     delete_user,
+    edit_profile,
     edit_user,
     home,
     users,
@@ -32,6 +33,7 @@ from crm.views import (
 urlpatterns = [
     path("", home, name="home"),
     path("customers/", customers, name="customers"),
+    path("profile/", edit_profile, name="edit_profile"),
     path("users/", users, name="users"),
     path("users/create/", create_user, name="create_user"),
     path("users/<int:user_id>/edit/", edit_user, name="edit_user"),

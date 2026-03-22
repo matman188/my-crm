@@ -5,6 +5,7 @@ from django.http import HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 
 from crm.forms import (
+    ProfileUpdateForm,
     SystemUserCreationForm,
     SystemUserPasswordChangeForm,
     SystemUserUpdateForm,
@@ -19,6 +20,29 @@ def home(request):
 @login_required
 def customers(request):
     return render(request, "crm/customers.html")
+
+
+@login_required
+def edit_profile(request):
+    if request.method == "POST":
+        form = ProfileUpdateForm(request.POST, instance=request.user)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Your profile was updated.")
+            return redirect("home")
+    else:
+        form = ProfileUpdateForm(instance=request.user)
+
+    return render(
+        request,
+        "crm/user_form.html",
+        {
+            "form": form,
+            "page_title": "Edit Profile",
+            "submit_label": "Save profile",
+            "form_description": "Update your own account details.",
+        },
+    )
 
 
 @login_required
