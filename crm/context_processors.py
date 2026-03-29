@@ -1,4 +1,4 @@
-from crm.access import can_manage_configuration, get_access_level_label
+from crm.authz import can_manage_configuration, get_access_level_label
 from crm.models import SystemSettings
 
 

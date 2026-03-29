@@ -1,7 +1,7 @@
 from django.db.models.signals import post_migrate
 from django.dispatch import receiver
 
-from crm.roles import ensure_crm_groups
+from crm.authz import ensure_crm_groups
 
 
 @receiver(post_migrate)
