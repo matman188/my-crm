@@ -1,0 +1,93 @@
+{% extends "crm/base.html" %}
+
+{% block title %}Products{% endblock %}
+{% block page_title %}Products{% endblock %}
+{% block page_copy %}Manage the products that can later be selected on sales orders and paired with services.{% endblock %}
+
+{% block content %}
+    <div class="toolbar">
+        <div>
+            <h2>Product Catalog</h2>
+            <p class="meta page-intro">Products can optionally belong to a category now, and they can later be combined with services during sales-order creation.</p>
+        </div>
+        <a class="button-link" href="{% url 'create_product' %}">Create product</a>
+    </div>
+
+    <div class="search-toolbar">
+        <form method="get" class="search-form">
+            <input
+                class="search-input"
+                type="search"
+                name="q"
+                value="{{ search_query }}"
+                placeholder="Search by product, category, or linked service"
+            >
+            <button class="button" type="submit">Search</button>
+            {% if search_query %}
+                <a class="button-link" href="{% url 'products' %}">Clear</a>
+            {% endif %}
+        </form>
+    </div>
+
+    <div class="data-table-shell">
+        {% if existing_products %}
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Product</th>
+                        <th>Category</th>
+                        <th>Linked Services</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for product in existing_products %}
+                        <tr>
+                            <td>
+                                <div class="user-name">{{ product.name }}</div>
+                                {% if product.description %}
+                                    <div class="user-email">{{ product.description|truncatechars:110 }}</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if product.category %}
+                                    <span>{{ product.category.name }}</span>
+                                {% else %}
+                                    <span class="meta">No category</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% with linked_services=product.services.all %}
+                                    {% if linked_services %}
+                                        {% for service in linked_services %}
+                                            <div class="linked-service-badge">
+                                                <span class="linked-service-name">{{ service.name }}</span>
+                                                <span class="linked-service-price">{{ service.price }}</span>
+                                            </div>
+                                        {% endfor %}
+                                    {% else %}
+                                        <span class="meta">No linked services</span>
+                                    {% endif %}
+                                {% endwith %}
+                            </td>
+                            <td>
+                                <div class="button-row">
+                                    <a class="button-link" href="{% url 'edit_product' product.id %}">Edit</a>
+                                    <form method="post" action="{% url 'delete_product' product.id %}">
+                                        {% csrf_token %}
+                                        <button class="button danger" type="submit">Delete</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <div class="empty-state">
+                <h3>No products yet</h3>
+                <p>Create your first product so it can be selected in future order workflows.</p>
+            </div>
+        {% endif %}
+    </div>
+{% endblock %}

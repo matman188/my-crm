@@ -1,0 +1,137 @@
+{% extends "crm/base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+{% block page_title %}{{ page_title }}{% endblock %}
+{% block page_copy %}Create and maintain the product and service catalog for your team.{% endblock %}
+
+{% block content %}
+    <div class="toolbar">
+        <div>
+            <h2>{{ page_title }}</h2>
+            <p class="meta">{{ form_description }}</p>
+        </div>
+        <a class="button-link" href="{% url back_url %}">{{ back_label }}</a>
+    </div>
+
+    <section class="panel">
+        <form method="post" class="form-grid">
+            {% csrf_token %}
+            {% if form.non_field_errors %}
+                <div class="non-field-errors">
+                    {{ form.non_field_errors }}
+                </div>
+            {% endif %}
+
+            <div class="form-layout">
+                {% for field in form %}
+                    <div class="form-field{% if field.name == 'description' or field.name == 'products' %} full{% endif %}">
+                        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                        {% if field.name == "products" and form.product_groups %}
+                            <div class="product-picker">
+                                {% for group in form.product_groups %}
+                                    <details class="product-picker-group"{% if group.is_open %} open{% endif %}>
+                                        <summary class="product-picker-summary">
+                                            <span class="product-picker-summary-main">
+                                                <span>{{ group.name }}</span>
+                                                <span class="product-picker-count">{{ group.count }} product{{ group.count|pluralize }}</span>
+                                            </span>
+                                            <label class="product-picker-group-toggle" for="id_products_group_{{ forloop.counter0 }}">
+                                                <input
+                                                    type="checkbox"
+                                                    id="id_products_group_{{ forloop.counter0 }}"
+                                                    class="product-group-toggle"
+                                                    data-product-group="{{ forloop.counter0 }}"
+                                                >
+                                                <span>Select all</span>
+                                            </label>
+                                        </summary>
+
+                                        <div class="product-picker-items" data-product-group-items="{{ forloop.counter0 }}">
+                                            {% for product in group.products %}
+                                                <label class="product-picker-option" for="{{ product.id_for_label }}">
+                                                    <input
+                                                        type="checkbox"
+                                                        name="{{ field.html_name }}"
+                                                        id="{{ product.id_for_label }}"
+                                                        value="{{ product.value }}"
+                                                        data-product-group-item="{{ forloop.parentloop.counter0 }}"
+                                                        {% if product.checked %}checked{% endif %}
+                                                    >
+                                                    <span>{{ product.label }}</span>
+                                                </label>
+                                            {% endfor %}
+                                        </div>
+                                    </details>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            {{ field }}
+                        {% endif %}
+                        {% if field.help_text %}
+                            <span class="helptext">{{ field.help_text }}</span>
+                        {% endif %}
+                        {% if field.errors %}
+                            <ul class="field-errors">
+                                {% for error in field.errors %}
+                                    <li>{{ error }}</li>
+                                {% endfor %}
+                            </ul>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+
+            <button class="button" type="submit">{{ submit_label }}</button>
+        </form>
+    </section>
+{% endblock %}
+
+{% block extra_scripts %}
+    {% if form.product_groups %}
+        <script>
+            document.addEventListener("DOMContentLoaded", function () {
+                const groupToggles = document.querySelectorAll(".product-group-toggle");
+
+                function syncGroupToggle(groupId) {
+                    const groupToggle = document.querySelector('.product-group-toggle[data-product-group="' + groupId + '"]');
+                    const groupItems = document.querySelectorAll('input[data-product-group-item="' + groupId + '"]');
+                    const checkedItems = Array.from(groupItems).filter(function (item) {
+                        return item.checked;
+                    });
+
+                    groupToggle.checked = groupItems.length > 0 && checkedItems.length === groupItems.length;
+                    groupToggle.indeterminate = checkedItems.length > 0 && checkedItems.length < groupItems.length;
+                }
+
+                groupToggles.forEach(function (groupToggle) {
+                    const groupId = groupToggle.dataset.productGroup;
+                    const groupItems = document.querySelectorAll('input[data-product-group-item="' + groupId + '"]');
+                    const groupToggleLabel = groupToggle.closest(".product-picker-group-toggle");
+
+                    syncGroupToggle(groupId);
+
+                    groupToggleLabel.addEventListener("click", function (event) {
+                        event.stopPropagation();
+                    });
+
+                    groupToggle.addEventListener("click", function (event) {
+                        event.stopPropagation();
+                    });
+
+                    groupToggle.addEventListener("change", function () {
+                        groupItems.forEach(function (item) {
+                            item.checked = groupToggle.checked;
+                        });
+                        syncGroupToggle(groupId);
+                    });
+
+                    groupItems.forEach(function (item) {
+                        item.addEventListener("change", function () {
+                            syncGroupToggle(groupId);
+                        });
+                    });
+                });
+            });
+        </script>
+    {% endif %}
+{% endblock %}

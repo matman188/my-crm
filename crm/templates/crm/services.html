@@ -1,0 +1,96 @@
+{% extends "crm/base.html" %}
+
+{% block title %}Services{% endblock %}
+{% block page_title %}Services{% endblock %}
+{% block page_copy %}Maintain the service catalog and prices that can be attached to products when needed.{% endblock %}
+
+{% block content %}
+    <div class="toolbar">
+        <div>
+            <h2>Service Catalog</h2>
+            <p class="meta page-intro">Each service has its own configurable price and can be linked to products now for future sales-order flows.</p>
+        </div>
+        <a class="button-link" href="{% url 'create_service' %}">Create service</a>
+    </div>
+
+    <div class="search-toolbar">
+        <form method="get" class="search-form">
+            <input
+                class="search-input"
+                type="search"
+                name="q"
+                value="{{ search_query }}"
+                placeholder="Search by service name, description, or product"
+            >
+            <button class="button" type="submit">Search</button>
+            {% if search_query %}
+                <a class="button-link" href="{% url 'services' %}">Clear</a>
+            {% endif %}
+        </form>
+    </div>
+
+    <div class="data-table-shell">
+        {% if existing_services %}
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Service</th>
+                        <th>Price</th>
+                        <th>Linked Products</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for service in existing_services %}
+                        <tr>
+                            <td>
+                                <div class="user-name">{{ service.name }}</div>
+                                {% if service.description %}
+                                    <div class="user-email">{{ service.description|truncatechars:110 }}</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="role-badge">{{ service.price }}</span>
+                            </td>
+                            <td>
+                                {% with linked_products=service.products.all %}
+                                    {% if linked_products %}
+                                        {% for product in linked_products %}
+                                            <div class="linked-product-badge">
+                                                {% if product.category %}
+                                                    <span class="linked-product-category">{{ product.category.name }}</span>
+                                                    <span class="linked-product-separator">/</span>
+                                                    <span class="linked-product-name">{{ product.name }}</span>
+                                                {% else %}
+                                                    <span class="linked-product-category">No category</span>
+                                                    <span class="linked-product-separator">/</span>
+                                                    <span class="linked-product-name">{{ product.name }}</span>
+                                                {% endif %}
+                                            </div>
+                                        {% endfor %}
+                                    {% else %}
+                                        <span class="meta">Not linked to a product</span>
+                                    {% endif %}
+                                {% endwith %}
+                            </td>
+                            <td>
+                                <div class="button-row">
+                                    <a class="button-link" href="{% url 'edit_service' service.id %}">Edit</a>
+                                    <form method="post" action="{% url 'delete_service' service.id %}">
+                                        {% csrf_token %}
+                                        <button class="button danger" type="submit">Delete</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <div class="empty-state">
+                <h3>No services yet</h3>
+                <p>Create a service with pricing so it can be attached to products later.</p>
+            </div>
+        {% endif %}
+    </div>
+{% endblock %}

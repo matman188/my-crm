@@ -1,0 +1,79 @@
+{% extends "crm/base.html" %}
+
+{% block title %}Product Categories{% endblock %}
+{% block page_title %}Product Categories{% endblock %}
+{% block page_copy %}Organize your catalog into reusable groups that products can be linked to later on.{% endblock %}
+
+{% block content %}
+    <div class="toolbar">
+        <div>
+            <h2>Product Categories</h2>
+            <p class="meta page-intro">Create high-level categories now so product records can stay tidy as your catalog grows.</p>
+        </div>
+        <a class="button-link" href="{% url 'create_product_category' %}">Create category</a>
+    </div>
+
+    <div class="search-toolbar">
+        <form method="get" class="search-form">
+            <input
+                class="search-input"
+                type="search"
+                name="q"
+                value="{{ search_query }}"
+                placeholder="Search by category name or description"
+            >
+            <button class="button" type="submit">Search</button>
+            {% if search_query %}
+                <a class="button-link" href="{% url 'product_categories' %}">Clear</a>
+            {% endif %}
+        </form>
+    </div>
+
+    <div class="data-table-shell">
+        {% if existing_categories %}
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Category</th>
+                        <th>Description</th>
+                        <th>Products</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for category in existing_categories %}
+                        <tr>
+                            <td>
+                                <div class="user-name">{{ category.name }}</div>
+                            </td>
+                            <td>
+                                {% if category.description %}
+                                    <div class="user-email">{{ category.description|truncatechars:120 }}</div>
+                                {% else %}
+                                    <span class="meta">No description</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="role-badge standard">{{ category.product_count }} linked</span>
+                            </td>
+                            <td>
+                                <div class="button-row">
+                                    <a class="button-link" href="{% url 'edit_product_category' category.id %}">Edit</a>
+                                    <form method="post" action="{% url 'delete_product_category' category.id %}">
+                                        {% csrf_token %}
+                                        <button class="button danger" type="submit">Delete</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <div class="empty-state">
+                <h3>No categories yet</h3>
+                <p>Create a product category to start organizing your catalog.</p>
+            </div>
+        {% endif %}
+    </div>
+{% endblock %}
