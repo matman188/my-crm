@@ -3,6 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpResponseForbidden
 from django.shortcuts import redirect, render
 
+from crm.demo_data import DEMO_PASSWORD, load_demo_data
 from crm.forms import SystemSettingsForm
 from crm.models import SystemSettings
 
@@ -17,6 +18,19 @@ def system_settings(request):
     settings = SystemSettings.get_solo()
 
     if request.method == "POST":
+        if request.POST.get("action") == "load_demo_data":
+            counts = load_demo_data()
+            messages.success(
+                request,
+                "Demo data refreshed: "
+                f"{counts['categories']} categories, "
+                f"{counts['products']} products, "
+                f"{counts['services']} services, "
+                f"{counts['customers']} customers, and "
+                f"{counts['users']} users. "
+                f"Demo user password: {DEMO_PASSWORD}",
+            )
+            return redirect("system_settings")
         form = SystemSettingsForm(request.POST, instance=settings)
         if form.is_valid():
             messages.success(

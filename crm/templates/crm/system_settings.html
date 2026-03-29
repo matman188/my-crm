@@ -49,4 +49,17 @@
             <button class="button" type="submit">Save settings</button>
         </form>
     </section>
+
+    <section class="panel">
+        <h3>Demo Data</h3>
+        <p class="meta">
+            Load a reusable sample dataset with 3 categories, 10 products, linked services, 10 customers, and 5 users.
+            Running it again refreshes the same demo records instead of creating duplicates.
+        </p>
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="load_demo_data">
+            <button class="button danger" type="submit">Load demo data</button>
+        </form>
+    </section>
 {% endblock %}
