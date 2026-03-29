@@ -65,7 +65,8 @@
             gap: 10px;
         }
 
-        .nav a {
+        .nav a,
+        .nav-group-toggle {
             display: block;
             padding: 12px 14px;
             border-radius: 14px;
@@ -76,14 +77,55 @@
             transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
         }
 
+        .nav-group {
+            display: grid;
+            gap: 10px;
+        }
+
+        .nav-group-toggle {
+            list-style: none;
+            cursor: pointer;
+            font: inherit;
+            font-weight: 700;
+        }
+
+        .nav-group-toggle::-webkit-details-marker {
+            display: none;
+        }
+
+        .nav-group-toggle::after {
+            content: "+";
+            float: right;
+            color: rgba(248, 251, 255, 0.78);
+            font-size: 1rem;
+            line-height: 1;
+        }
+
+        .nav-group[open] .nav-group-toggle::after {
+            content: "-";
+        }
+
+        .nav-submenu {
+            display: grid;
+            gap: 10px;
+            padding-left: 14px;
+        }
+
+        .nav-submenu a {
+            background: rgba(255, 255, 255, 0.04);
+        }
+
         .nav a:hover,
-        .nav a:focus-visible {
+        .nav a:focus-visible,
+        .nav-group-toggle:hover,
+        .nav-group-toggle:focus-visible {
             background: var(--panel-soft);
             border-color: rgba(255, 255, 255, 0.1);
             transform: translateX(2px);
         }
 
-        .nav a.active {
+        .nav a.active,
+        .nav-group-toggle.active {
             background: rgba(255, 255, 255, 0.18);
             border-color: rgba(255, 255, 255, 0.16);
         }
@@ -702,14 +744,21 @@
         <aside class="sidebar">
             <h1 class="brand">My CRM</h1>
             <p class="sidebar-copy">Keep your customer and team activity organized in one place.</p>
+            {% with current_url=request.resolver_match.url_name %}
             <nav class="nav" aria-label="Primary">
-                <a class="{% if request.resolver_match.url_name == 'home' %}active{% endif %}" href="{% url 'home' %}">Dashboard</a>
-                <a class="{% if request.resolver_match.url_name == 'customers' or request.resolver_match.url_name == 'create_customer' or request.resolver_match.url_name == 'edit_customer' %}active{% endif %}" href="{% url 'customers' %}">Customers</a>
-                <a class="{% if request.resolver_match.url_name == 'product_categories' or request.resolver_match.url_name == 'create_product_category' or request.resolver_match.url_name == 'edit_product_category' %}active{% endif %}" href="{% url 'product_categories' %}">Product Categories</a>
-                <a class="{% if request.resolver_match.url_name == 'products' or request.resolver_match.url_name == 'create_product' or request.resolver_match.url_name == 'edit_product' %}active{% endif %}" href="{% url 'products' %}">Products</a>
-                <a class="{% if request.resolver_match.url_name == 'services' or request.resolver_match.url_name == 'create_service' or request.resolver_match.url_name == 'edit_service' %}active{% endif %}" href="{% url 'services' %}">Services</a>
-                <a class="{% if request.resolver_match.url_name == 'users' or request.resolver_match.url_name == 'create_user' or request.resolver_match.url_name == 'edit_user' or request.resolver_match.url_name == 'change_user_password' %}active{% endif %}" href="{% url 'users' %}">Users</a>
+                <a class="{% if current_url == 'home' %}active{% endif %}" href="{% url 'home' %}">Dashboard</a>
+                <a class="{% if current_url == 'customers' or current_url == 'create_customer' or current_url == 'edit_customer' %}active{% endif %}" href="{% url 'customers' %}">Customers</a>
+                <details class="nav-group" {% if current_url == 'product_categories' or current_url == 'create_product_category' or current_url == 'edit_product_category' or current_url == 'products' or current_url == 'create_product' or current_url == 'edit_product' or current_url == 'services' or current_url == 'create_service' or current_url == 'edit_service' or current_url == 'users' or current_url == 'create_user' or current_url == 'edit_user' or current_url == 'change_user_password' %}open{% endif %}>
+                    <summary class="nav-group-toggle {% if current_url == 'product_categories' or current_url == 'create_product_category' or current_url == 'edit_product_category' or current_url == 'products' or current_url == 'create_product' or current_url == 'edit_product' or current_url == 'services' or current_url == 'create_service' or current_url == 'edit_service' or current_url == 'users' or current_url == 'create_user' or current_url == 'edit_user' or current_url == 'change_user_password' %}active{% endif %}">Configuration</summary>
+                    <div class="nav-submenu">
+                        <a class="{% if current_url == 'products' or current_url == 'create_product' or current_url == 'edit_product' %}active{% endif %}" href="{% url 'products' %}">Products</a>
+                        <a class="{% if current_url == 'product_categories' or current_url == 'create_product_category' or current_url == 'edit_product_category' %}active{% endif %}" href="{% url 'product_categories' %}">Product Categories</a>
+                        <a class="{% if current_url == 'services' or current_url == 'create_service' or current_url == 'edit_service' %}active{% endif %}" href="{% url 'services' %}">Services</a>
+                        <a class="{% if current_url == 'users' or current_url == 'create_user' or current_url == 'edit_user' or current_url == 'change_user_password' %}active{% endif %}" href="{% url 'users' %}">Users</a>
+                    </div>
+                </details>
             </nav>
+            {% endwith %}
         </aside>
 
         <main class="content">

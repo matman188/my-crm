@@ -29,6 +29,11 @@ class AuthenticationFlowTests(TestCase):
         response = self.client.get(reverse("home"))
 
         self.assertContains(response, reverse("customers"))
+        self.assertContains(response, "Configuration")
+        self.assertContains(response, reverse("products"))
+        self.assertContains(response, reverse("product_categories"))
+        self.assertContains(response, reverse("services"))
+        self.assertContains(response, reverse("users"))
         self.assertContains(response, "Alex")
         self.assertContains(response, reverse("edit_profile"))
 
