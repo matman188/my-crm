@@ -1,0 +1,52 @@
+{% extends "crm/base.html" %}
+
+{% block title %}System Settings{% endblock %}
+{% block page_title %}System Settings{% endblock %}
+{% block page_copy %}Manage global CRM behavior and operational defaults from one place.{% endblock %}
+
+{% block content %}
+    <div class="toolbar">
+        <div>
+            <h2>System Settings</h2>
+            <p class="meta">Update the shared company identity and default currency used across the CRM.</p>
+        </div>
+        <div class="button-row">
+            {% if request.user.is_staff %}
+                <a class="button-link" href="/admin/">Open Django Admin</a>
+            {% endif %}
+            <a class="button-link" href="{% url 'home' %}">Back to dashboard</a>
+        </div>
+    </div>
+
+    <section class="panel">
+        <form method="post" class="form-grid">
+            {% csrf_token %}
+            {% if form.non_field_errors %}
+                <div class="non-field-errors">
+                    {{ form.non_field_errors }}
+                </div>
+            {% endif %}
+
+            <div class="form-layout">
+                {% for field in form %}
+                    <div class="form-field">
+                        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                        {{ field }}
+                        {% if field.help_text %}
+                            <span class="helptext">{{ field.help_text }}</span>
+                        {% endif %}
+                        {% if field.errors %}
+                            <ul class="field-errors">
+                                {% for error in field.errors %}
+                                    <li>{{ error }}</li>
+                                {% endfor %}
+                            </ul>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+
+            <button class="button" type="submit">Save settings</button>
+        </form>
+    </section>
+{% endblock %}

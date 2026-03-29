@@ -50,7 +50,7 @@
                                 {% endif %}
                             </td>
                             <td>
-                                <span class="role-badge">{{ service.price }}</span>
+                                <span class="role-badge">{{ default_currency }} {{ service.price }}</span>
                             </td>
                             <td>
                                 {% with linked_products=service.products.all %}

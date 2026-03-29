@@ -130,6 +130,43 @@
             border-color: rgba(255, 255, 255, 0.16);
         }
 
+        .sidebar-utility {
+            margin-top: auto;
+            padding-top: 22px;
+        }
+
+        .sidebar-utility-link {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+            padding: 12px 14px;
+            border-radius: 14px;
+            color: inherit;
+            text-decoration: none;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid transparent;
+            transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+        }
+
+        .sidebar-utility-link:hover,
+        .sidebar-utility-link:focus-visible {
+            background: var(--panel-soft);
+            border-color: rgba(255, 255, 255, 0.1);
+            transform: translateX(2px);
+        }
+
+        .sidebar-utility-link.active {
+            background: rgba(255, 255, 255, 0.18);
+            border-color: rgba(255, 255, 255, 0.16);
+        }
+
+        .sidebar-utility-icon {
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
+        }
+
         .content {
             padding: 26px 30px 32px;
         }
@@ -742,22 +779,34 @@
 <body>
     <div class="app-shell">
         <aside class="sidebar">
-            <h1 class="brand">My CRM</h1>
+            <h1 class="brand">{{ company_name }}</h1>
             <p class="sidebar-copy">Keep your customer and team activity organized in one place.</p>
             {% with current_url=request.resolver_match.url_name %}
             <nav class="nav" aria-label="Primary">
                 <a class="{% if current_url == 'home' %}active{% endif %}" href="{% url 'home' %}">Dashboard</a>
                 <a class="{% if current_url == 'customers' or current_url == 'create_customer' or current_url == 'edit_customer' %}active{% endif %}" href="{% url 'customers' %}">Customers</a>
-                <details class="nav-group" {% if current_url == 'product_categories' or current_url == 'create_product_category' or current_url == 'edit_product_category' or current_url == 'products' or current_url == 'create_product' or current_url == 'edit_product' or current_url == 'services' or current_url == 'create_service' or current_url == 'edit_service' or current_url == 'users' or current_url == 'create_user' or current_url == 'edit_user' or current_url == 'change_user_password' %}open{% endif %}>
-                    <summary class="nav-group-toggle {% if current_url == 'product_categories' or current_url == 'create_product_category' or current_url == 'edit_product_category' or current_url == 'products' or current_url == 'create_product' or current_url == 'edit_product' or current_url == 'services' or current_url == 'create_service' or current_url == 'edit_service' or current_url == 'users' or current_url == 'create_user' or current_url == 'edit_user' or current_url == 'change_user_password' %}active{% endif %}">Configuration</summary>
-                    <div class="nav-submenu">
-                        <a class="{% if current_url == 'products' or current_url == 'create_product' or current_url == 'edit_product' %}active{% endif %}" href="{% url 'products' %}">Products</a>
-                        <a class="{% if current_url == 'product_categories' or current_url == 'create_product_category' or current_url == 'edit_product_category' %}active{% endif %}" href="{% url 'product_categories' %}">Product Categories</a>
-                        <a class="{% if current_url == 'services' or current_url == 'create_service' or current_url == 'edit_service' %}active{% endif %}" href="{% url 'services' %}">Services</a>
-                        <a class="{% if current_url == 'users' or current_url == 'create_user' or current_url == 'edit_user' or current_url == 'change_user_password' %}active{% endif %}" href="{% url 'users' %}">Users</a>
-                    </div>
-                </details>
+                {% if can_manage_configuration %}
+                    <details class="nav-group" {% if current_url == 'product_categories' or current_url == 'create_product_category' or current_url == 'edit_product_category' or current_url == 'products' or current_url == 'create_product' or current_url == 'edit_product' or current_url == 'services' or current_url == 'create_service' or current_url == 'edit_service' or current_url == 'users' or current_url == 'create_user' or current_url == 'edit_user' or current_url == 'change_user_password' %}open{% endif %}>
+                        <summary class="nav-group-toggle {% if current_url == 'product_categories' or current_url == 'create_product_category' or current_url == 'edit_product_category' or current_url == 'products' or current_url == 'create_product' or current_url == 'edit_product' or current_url == 'services' or current_url == 'create_service' or current_url == 'edit_service' or current_url == 'users' or current_url == 'create_user' or current_url == 'edit_user' or current_url == 'change_user_password' %}active{% endif %}">Configuration</summary>
+                        <div class="nav-submenu">
+                            <a class="{% if current_url == 'products' or current_url == 'create_product' or current_url == 'edit_product' %}active{% endif %}" href="{% url 'products' %}">Products</a>
+                            <a class="{% if current_url == 'product_categories' or current_url == 'create_product_category' or current_url == 'edit_product_category' %}active{% endif %}" href="{% url 'product_categories' %}">Product Categories</a>
+                            <a class="{% if current_url == 'services' or current_url == 'create_service' or current_url == 'edit_service' %}active{% endif %}" href="{% url 'services' %}">Services</a>
+                            <a class="{% if current_url == 'users' or current_url == 'create_user' or current_url == 'edit_user' or current_url == 'change_user_password' %}active{% endif %}" href="{% url 'users' %}">Users</a>
+                        </div>
+                    </details>
+                {% endif %}
             </nav>
+            {% if can_manage_configuration %}
+                <div class="sidebar-utility">
+                    <a class="sidebar-utility-link {% if current_url == 'system_settings' %}active{% endif %}" href="{% url 'system_settings' %}">
+                        <svg class="sidebar-utility-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path fill="currentColor" d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.35 7.35 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.58.23-1.13.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .6.22l2.39-.96c.5.4 1.05.72 1.63.94l.36 2.54a.5.5 0 0 0 .5.42h3.84a.5.5 0 0 0 .5-.42l.36-2.54c.58-.23 1.13-.54 1.63-.94l2.39.96a.5.5 0 0 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64zm-7.14 2.56A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"/>
+                        </svg>
+                        <span>System Settings</span>
+                    </a>
+                </div>
+            {% endif %}
             {% endwith %}
         </aside>
 
@@ -772,15 +821,9 @@
                     <summary class="profile-toggle">
                         <span class="avatar">{{ request.user.username|first|upper }}</span>
                         <span class="profile-meta">
-                            <span class="profile-name">{{ request.user.get_full_name|default:request.user.username }}</span>
-                            <span class="profile-role">
-                                {% if request.user.is_superuser %}
-                                    Superuser
-                                {% elif request.user.is_staff %}
-                                    Staff user
-                                {% else %}
-                                    Standard user
-                                {% endif %}
+                        <span class="profile-name">{{ request.user.get_full_name|default:request.user.username }}</span>
+                        <span class="profile-role">
+                                {{ user_access_level }}
                             </span>
                         </span>
                     </summary>

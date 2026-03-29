@@ -4,10 +4,28 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 
-from crm.models import Customer, Product, ProductCategory, Service
+from crm.models import Customer, Product, ProductCategory, Service, SystemSettings
+from crm.roles import (
+    ACCESS_LEVEL_ADMIN,
+    ACCESS_LEVEL_SYSTEM_ADMIN,
+    CRM_ADMIN_GROUP,
+    SYSTEM_ADMIN_GROUP,
+    assign_access_level,
+)
 
 
 class AuthenticationFlowTests(TestCase):
+    def create_admin_user(self, username="admin_agent", system_admin=False):
+        user = get_user_model().objects.create_user(
+            username=username,
+            password="testpass123",
+        )
+        assign_access_level(
+            user,
+            ACCESS_LEVEL_SYSTEM_ADMIN if system_admin else ACCESS_LEVEL_ADMIN,
+        )
+        return user
+
     def test_home_redirects_anonymous_users_to_login(self):
         response = self.client.get(reverse("home"))
 
@@ -18,7 +36,7 @@ class AuthenticationFlowTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
 
-    def test_home_shows_sidebar_link_for_logged_in_user(self):
+    def test_home_hides_admin_navigation_for_non_admin_user(self):
         user = get_user_model().objects.create_user(
             username="agent",
             first_name="Alex",
@@ -29,13 +47,39 @@ class AuthenticationFlowTests(TestCase):
         response = self.client.get(reverse("home"))
 
         self.assertContains(response, reverse("customers"))
+        self.assertNotContains(response, "Configuration")
+        self.assertNotContains(response, reverse("system_settings"))
+        self.assertContains(response, "My CRM")
+        self.assertContains(response, "Alex")
+        self.assertContains(response, reverse("edit_profile"))
+
+    def test_home_shows_configuration_and_system_settings_for_staff_user(self):
+        user = self.create_admin_user(username="admin_agent")
+        user.first_name = "Admin"
+        user.save(update_fields=["first_name"])
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("home"))
+
         self.assertContains(response, "Configuration")
         self.assertContains(response, reverse("products"))
         self.assertContains(response, reverse("product_categories"))
         self.assertContains(response, reverse("services"))
+        self.assertContains(response, reverse("system_settings"))
         self.assertContains(response, reverse("users"))
-        self.assertContains(response, "Alex")
-        self.assertContains(response, reverse("edit_profile"))
+
+    def test_home_shows_users_link_for_superuser(self):
+        user = get_user_model().objects.create_superuser(
+            username="crm_admin",
+            email="admin@example.com",
+            password="adminpass123",
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("home"))
+
+        self.assertContains(response, "Configuration")
+        self.assertContains(response, reverse("users"))
 
     def test_customers_page_requires_login(self):
         response = self.client.get(reverse("customers"))
@@ -147,11 +191,19 @@ class AuthenticationFlowTests(TestCase):
 
         self.assertRedirects(response, "/login/?next=/product-categories/")
 
-    def test_logged_in_user_can_create_product_category(self):
+    def test_non_admin_cannot_open_product_categories_page(self):
         user = get_user_model().objects.create_user(
             username="agent",
             password="testpass123",
         )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("product_categories"))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_logged_in_user_can_create_product_category(self):
+        user = self.create_admin_user()
         self.client.force_login(user)
 
         response = self.client.post(
@@ -167,10 +219,7 @@ class AuthenticationFlowTests(TestCase):
         self.assertTrue(ProductCategory.objects.filter(name="Electronics").exists())
 
     def test_logged_in_user_can_create_product_without_category(self):
-        user = get_user_model().objects.create_user(
-            username="agent",
-            password="testpass123",
-        )
+        user = self.create_admin_user()
         self.client.force_login(user)
 
         response = self.client.post(
@@ -188,10 +237,7 @@ class AuthenticationFlowTests(TestCase):
         self.assertIsNone(product.category)
 
     def test_logged_in_user_can_create_product_with_category(self):
-        user = get_user_model().objects.create_user(
-            username="agent",
-            password="testpass123",
-        )
+        user = self.create_admin_user()
         category = ProductCategory.objects.create(name="Hardware")
         self.client.force_login(user)
 
@@ -210,10 +256,7 @@ class AuthenticationFlowTests(TestCase):
         self.assertEqual(product.category, category)
 
     def test_products_page_can_search_by_category_name(self):
-        user = get_user_model().objects.create_user(
-            username="agent",
-            password="testpass123",
-        )
+        user = self.create_admin_user()
         networking = ProductCategory.objects.create(name="Networking")
         office = ProductCategory.objects.create(name="Office")
         Product.objects.create(name="Switch", category=networking)
@@ -226,10 +269,7 @@ class AuthenticationFlowTests(TestCase):
         self.assertNotContains(response, "Desk")
 
     def test_products_page_shows_plain_category_and_linked_service_badges(self):
-        user = get_user_model().objects.create_user(
-            username="agent",
-            password="testpass123",
-        )
+        user = self.create_admin_user()
         category = ProductCategory.objects.create(name="Networking")
         product = Product.objects.create(name="Router", category=category)
         installation = Service.objects.create(name="Installation", price="150.00")
@@ -249,10 +289,7 @@ class AuthenticationFlowTests(TestCase):
         self.assertContains(response, 'class="linked-service-badge"')
 
     def test_logged_in_user_can_create_service_and_link_products(self):
-        user = get_user_model().objects.create_user(
-            username="agent",
-            password="testpass123",
-        )
+        user = self.create_admin_user()
         router = Product.objects.create(name="Router")
         switch = Product.objects.create(name="Switch")
         self.client.force_login(user)
@@ -278,10 +315,7 @@ class AuthenticationFlowTests(TestCase):
         )
 
     def test_logged_in_user_can_create_service_without_linked_products(self):
-        user = get_user_model().objects.create_user(
-            username="agent",
-            password="testpass123",
-        )
+        user = self.create_admin_user()
         self.client.force_login(user)
 
         response = self.client.post(
@@ -299,10 +333,7 @@ class AuthenticationFlowTests(TestCase):
         self.assertEqual(service.products.count(), 0)
 
     def test_service_form_groups_products_under_category_headers(self):
-        user = get_user_model().objects.create_user(
-            username="agent",
-            password="testpass123",
-        )
+        user = self.create_admin_user()
         category = ProductCategory.objects.create(name="Networking")
         Product.objects.create(name="Router", category=category)
         Product.objects.create(name="Audit", category=None)
@@ -320,10 +351,7 @@ class AuthenticationFlowTests(TestCase):
         self.assertContains(response, "Select all")
 
     def test_services_page_can_search_by_linked_product(self):
-        user = get_user_model().objects.create_user(
-            username="agent",
-            password="testpass123",
-        )
+        user = self.create_admin_user()
         router = Product.objects.create(name="Router")
         unrelated = Product.objects.create(name="Desk")
         installation = Service.objects.create(name="Installation", price="100.00")
@@ -338,10 +366,7 @@ class AuthenticationFlowTests(TestCase):
         self.assertNotContains(response, "Delivery")
 
     def test_services_page_shows_category_and_product_for_linked_products(self):
-        user = get_user_model().objects.create_user(
-            username="agent",
-            password="testpass123",
-        )
+        user = self.create_admin_user()
         category = ProductCategory.objects.create(name="Networking")
         router = Product.objects.create(name="Router", category=category)
         audit = Product.objects.create(name="Audit")
@@ -359,10 +384,7 @@ class AuthenticationFlowTests(TestCase):
         self.assertContains(response, 'class="linked-product-category"')
 
     def test_services_page_orders_linked_products_by_category_then_product(self):
-        user = get_user_model().objects.create_user(
-            username="agent",
-            password="testpass123",
-        )
+        user = self.create_admin_user()
         appliances = ProductCategory.objects.create(name="Appliances")
         networking = ProductCategory.objects.create(name="Networking")
         toaster = Product.objects.create(name="Toaster", category=appliances)
@@ -379,10 +401,7 @@ class AuthenticationFlowTests(TestCase):
         self.assertLess(content.index("Networking"), content.index("No category"))
 
     def test_deleting_category_leaves_product_without_category(self):
-        user = get_user_model().objects.create_user(
-            username="agent",
-            password="testpass123",
-        )
+        user = self.create_admin_user()
         category = ProductCategory.objects.create(name="Temporary")
         product = Product.objects.create(name="Monitor", category=category)
         self.client.force_login(user)
@@ -416,6 +435,100 @@ class AuthenticationFlowTests(TestCase):
         user.refresh_from_db()
         self.assertEqual(user.username, "agent-updated")
         self.assertEqual(user.first_name, "Alex")
+
+    def test_system_settings_page_requires_login(self):
+        response = self.client.get(reverse("system_settings"))
+
+        self.assertRedirects(response, "/login/?next=/system-settings/")
+
+    def test_non_admin_user_cannot_open_system_settings_page(self):
+        user = get_user_model().objects.create_user(
+            username="agent",
+            password="testpass123",
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("system_settings"))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_logged_in_user_can_open_system_settings_page(self):
+        user = self.create_admin_user()
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("system_settings"))
+
+        self.assertContains(response, "System Settings")
+        self.assertContains(response, "Company Name")
+        self.assertContains(response, "Default Currency")
+        self.assertContains(response, 'value="My CRM"', html=False)
+        self.assertNotContains(response, "Open Django Admin")
+
+    def test_system_admin_sees_django_admin_link_on_system_settings_page(self):
+        user = self.create_admin_user(username="system_admin", system_admin=True)
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("system_settings"))
+
+        self.assertContains(response, 'href="/admin/"', html=False)
+        self.assertContains(response, "Open Django Admin")
+
+    def test_logged_in_user_can_submit_system_settings_and_values_are_used_across_the_app(self):
+        user = self.create_admin_user()
+        category = ProductCategory.objects.create(name="Networking")
+        product = Product.objects.create(name="Router", category=category)
+        service = Service.objects.create(name="Installation", price="250.00")
+        service.products.add(product)
+        self.client.force_login(user)
+
+        response = self.client.post(
+            reverse("system_settings"),
+            {
+                "company_name": "Northwind Systems",
+                "default_currency": "USD",
+            },
+            follow=True,
+        )
+
+        self.assertRedirects(response, reverse("system_settings"))
+        self.assertContains(response, "System settings were updated.")
+
+        settings = SystemSettings.get_solo()
+        self.assertEqual(settings.company_name, "Northwind Systems")
+        self.assertEqual(settings.default_currency, "USD")
+
+        home_response = self.client.get(reverse("home"))
+        self.assertContains(home_response, "Northwind Systems")
+
+        services_response = self.client.get(reverse("services"))
+        self.assertContains(services_response, "USD 250.00")
+
+        products_response = self.client.get(reverse("products"))
+        self.assertContains(products_response, "USD 250.00")
+
+    def test_service_form_uses_current_default_currency_in_price_label(self):
+        user = self.create_admin_user()
+        settings = SystemSettings.get_solo()
+        settings.default_currency = "EUR"
+        settings.save()
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("create_service"))
+
+        self.assertContains(response, "Price (EUR)")
+
+    def test_create_user_form_explains_access_levels(self):
+        admin_user = get_user_model().objects.create_superuser(
+            username="crm_admin",
+            email="admin@example.com",
+            password="adminpass123",
+        )
+        self.client.force_login(admin_user)
+
+        response = self.client.get(reverse("create_user"))
+
+        self.assertContains(response, "Access Level")
+        self.assertContains(response, "System Admin: includes Admin access and can sign in to Django admin at /admin/.")
 
     def test_users_page_requires_login(self):
         response = self.client.get(reverse("users"))
@@ -499,7 +612,7 @@ class AuthenticationFlowTests(TestCase):
                 "email": "newagent@example.com",
                 "first_name": "New",
                 "last_name": "Agent",
-                "is_staff": "on",
+                "access_level": "system_admin",
                 "password1": "safePassword123",
                 "password2": "safePassword123",
             },
@@ -510,8 +623,9 @@ class AuthenticationFlowTests(TestCase):
         created_user = get_user_model().objects.get(username="newagent")
         self.assertEqual(created_user.email, "newagent@example.com")
         self.assertTrue(created_user.is_staff)
+        self.assertTrue(created_user.groups.filter(name=SYSTEM_ADMIN_GROUP).exists())
 
-    def test_non_superuser_cannot_open_users_page(self):
+    def test_non_admin_cannot_open_users_page(self):
         user = get_user_model().objects.create_user(
             username="agent",
             password="testpass123",
@@ -521,6 +635,14 @@ class AuthenticationFlowTests(TestCase):
         response = self.client.get(reverse("users"))
 
         self.assertEqual(response.status_code, 403)
+
+    def test_admin_can_open_users_page(self):
+        user = self.create_admin_user()
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("users"))
+
+        self.assertEqual(response.status_code, 200)
 
     def test_superuser_can_edit_user(self):
         admin_user = get_user_model().objects.create_superuser(
@@ -542,7 +664,7 @@ class AuthenticationFlowTests(TestCase):
                 "email": "updated@example.com",
                 "first_name": "Updated",
                 "last_name": "User",
-                "is_staff": "on",
+                "access_level": "admin",
                 "is_active": "on",
             },
             follow=True,
@@ -552,7 +674,29 @@ class AuthenticationFlowTests(TestCase):
         editable_user.refresh_from_db()
         self.assertEqual(editable_user.username, "agent-updated")
         self.assertEqual(editable_user.email, "updated@example.com")
-        self.assertTrue(editable_user.is_staff)
+        self.assertFalse(editable_user.is_staff)
+        self.assertTrue(editable_user.groups.filter(name=CRM_ADMIN_GROUP).exists())
+
+    def test_admin_cannot_grant_system_admin_access(self):
+        admin_user = self.create_admin_user()
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            reverse("create_user"),
+            {
+                "username": "newsys",
+                "email": "newsys@example.com",
+                "first_name": "New",
+                "last_name": "Sys",
+                "access_level": "system_admin",
+                "password1": "safePassword123",
+                "password2": "safePassword123",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Select a valid choice")
+        self.assertFalse(get_user_model().objects.filter(username="newsys").exists())
 
     def test_superuser_edit_form_hides_protected_flags_for_superuser(self):
         admin_user = get_user_model().objects.create_superuser(
@@ -564,10 +708,10 @@ class AuthenticationFlowTests(TestCase):
 
         response = self.client.get(reverse("edit_user", args=[admin_user.id]))
 
-        self.assertNotContains(response, 'name="is_staff"')
+        self.assertNotContains(response, 'name="access_level"')
         self.assertNotContains(response, 'name="is_active"')
 
-    def test_superuser_cannot_change_own_staff_or_active_flags_from_edit_form(self):
+    def test_superuser_cannot_change_own_access_level_or_active_flag_from_edit_form(self):
         admin_user = get_user_model().objects.create_superuser(
             username="crm_admin",
             email="admin@example.com",
@@ -582,7 +726,6 @@ class AuthenticationFlowTests(TestCase):
                 "email": "updated-admin@example.com",
                 "first_name": "CRM",
                 "last_name": "Admin",
-                "is_staff": "",
                 "is_active": "",
             },
             follow=True,

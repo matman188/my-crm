@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from crm.models import Customer, Product, ProductCategory, Service
+from crm.models import Customer, Product, ProductCategory, Service, SystemSettings
 
 
 @admin.register(Customer)
@@ -24,6 +24,18 @@ class ProductAdmin(admin.ModelAdmin):
 
 @admin.register(Service)
 class ServiceAdmin(admin.ModelAdmin):
-    list_display = ("name", "price", "updated_at")
+    list_display = ("name", "formatted_price", "updated_at")
     filter_horizontal = ("products",)
     search_fields = ("name", "description", "products__name")
+
+    @admin.display(description="price")
+    def formatted_price(self, obj):
+        return f"{SystemSettings.get_solo().default_currency} {obj.price}"
+
+
+@admin.register(SystemSettings)
+class SystemSettingsAdmin(admin.ModelAdmin):
+    list_display = ("company_name", "default_currency")
+
+    def has_add_permission(self, request):
+        return not SystemSettings.objects.exists()

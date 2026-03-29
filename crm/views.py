@@ -6,17 +6,23 @@ from django.db.models.functions import Coalesce, Lower
 from django.http import HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 
+from crm.access import can_manage_user_record, get_access_level_label
 from crm.forms import (
     CustomerForm,
     ProductCategoryForm,
     ProductForm,
     ProfileUpdateForm,
     ServiceForm,
+    SystemSettingsForm,
     SystemUserCreationForm,
     SystemUserPasswordChangeForm,
     SystemUserUpdateForm,
 )
-from crm.models import Customer, Product, ProductCategory, Service
+from crm.models import Customer, Product, ProductCategory, Service, SystemSettings
+
+
+def _has_permission(user, permission):
+    return user.is_superuser or user.has_perm(permission)
 
 
 @login_required
@@ -118,6 +124,9 @@ def delete_customer(request, customer_id):
 
 @login_required
 def product_categories(request):
+    if not _has_permission(request.user, "crm.view_productcategory"):
+        return HttpResponseForbidden("Only admin users can manage configuration.")
+
     search_query = request.GET.get("q", "").strip()
     existing_categories = ProductCategory.objects.annotate(product_count=Count("products"))
 
@@ -140,6 +149,9 @@ def product_categories(request):
 
 @login_required
 def create_product_category(request):
+    if not _has_permission(request.user, "crm.add_productcategory"):
+        return HttpResponseForbidden("Only admin users can manage configuration.")
+
     if request.method == "POST":
         form = ProductCategoryForm(request.POST)
         if form.is_valid():
@@ -165,6 +177,9 @@ def create_product_category(request):
 
 @login_required
 def edit_product_category(request, category_id):
+    if not _has_permission(request.user, "crm.change_productcategory"):
+        return HttpResponseForbidden("Only admin users can manage configuration.")
+
     category = get_object_or_404(ProductCategory, pk=category_id)
 
     if request.method == "POST":
@@ -192,6 +207,9 @@ def edit_product_category(request, category_id):
 
 @login_required
 def delete_product_category(request, category_id):
+    if not _has_permission(request.user, "crm.delete_productcategory"):
+        return HttpResponseForbidden("Only admin users can manage configuration.")
+
     if request.method != "POST":
         return HttpResponseForbidden("Categories can only be deleted with a POST request.")
 
@@ -204,6 +222,9 @@ def delete_product_category(request, category_id):
 
 @login_required
 def products(request):
+    if not _has_permission(request.user, "crm.view_product"):
+        return HttpResponseForbidden("Only admin users can manage configuration.")
+
     search_query = request.GET.get("q", "").strip()
     existing_products = Product.objects.select_related("category").prefetch_related(
         Prefetch("services", queryset=Service.objects.order_by("name", "id"))
@@ -230,6 +251,9 @@ def products(request):
 
 @login_required
 def create_product(request):
+    if not _has_permission(request.user, "crm.add_product"):
+        return HttpResponseForbidden("Only admin users can manage configuration.")
+
     if request.method == "POST":
         form = ProductForm(request.POST)
         if form.is_valid():
@@ -255,6 +279,9 @@ def create_product(request):
 
 @login_required
 def edit_product(request, product_id):
+    if not _has_permission(request.user, "crm.change_product"):
+        return HttpResponseForbidden("Only admin users can manage configuration.")
+
     product = get_object_or_404(Product, pk=product_id)
 
     if request.method == "POST":
@@ -282,6 +309,9 @@ def edit_product(request, product_id):
 
 @login_required
 def delete_product(request, product_id):
+    if not _has_permission(request.user, "crm.delete_product"):
+        return HttpResponseForbidden("Only admin users can manage configuration.")
+
     if request.method != "POST":
         return HttpResponseForbidden("Products can only be deleted with a POST request.")
 
@@ -294,6 +324,9 @@ def delete_product(request, product_id):
 
 @login_required
 def services(request):
+    if not _has_permission(request.user, "crm.view_service"):
+        return HttpResponseForbidden("Only admin users can manage configuration.")
+
     search_query = request.GET.get("q", "").strip()
     existing_services = Service.objects.prefetch_related(
         Prefetch(
@@ -326,6 +359,9 @@ def services(request):
 
 @login_required
 def create_service(request):
+    if not _has_permission(request.user, "crm.add_service"):
+        return HttpResponseForbidden("Only admin users can manage configuration.")
+
     if request.method == "POST":
         form = ServiceForm(request.POST)
         if form.is_valid():
@@ -351,6 +387,9 @@ def create_service(request):
 
 @login_required
 def edit_service(request, service_id):
+    if not _has_permission(request.user, "crm.change_service"):
+        return HttpResponseForbidden("Only admin users can manage configuration.")
+
     service = get_object_or_404(Service, pk=service_id)
 
     if request.method == "POST":
@@ -378,6 +417,9 @@ def edit_service(request, service_id):
 
 @login_required
 def delete_service(request, service_id):
+    if not _has_permission(request.user, "crm.delete_service"):
+        return HttpResponseForbidden("Only admin users can manage configuration.")
+
     if request.method != "POST":
         return HttpResponseForbidden("Services can only be deleted with a POST request.")
 
@@ -412,12 +454,40 @@ def edit_profile(request):
 
 
 @login_required
+def system_settings(request):
+    if not _has_permission(request.user, "crm.change_systemsettings"):
+        return HttpResponseForbidden("Only admin users can manage system settings.")
+
+    settings = SystemSettings.get_solo()
+
+    if request.method == "POST":
+        form = SystemSettingsForm(request.POST, instance=settings)
+        if form.is_valid():
+            messages.success(
+                request,
+                "System settings were updated.",
+            )
+            form.save()
+            return redirect("system_settings")
+    else:
+        form = SystemSettingsForm(instance=settings)
+
+    return render(
+        request,
+        "crm/system_settings.html",
+        {
+            "form": form,
+        },
+    )
+
+
+@login_required
 def users(request):
-    if not request.user.is_superuser:
-        return HttpResponseForbidden("Only superusers can create system users.")
+    if not _has_permission(request.user, "auth.view_user"):
+        return HttpResponseForbidden("Only admin users can manage system users.")
 
     search_query = request.GET.get("q", "").strip()
-    existing_users = get_user_model().objects.all()
+    existing_users = get_user_model().objects.all().order_by(Lower("username"), "id")
 
     if search_query:
         existing_users = existing_users.filter(
@@ -427,7 +497,9 @@ def users(request):
             | Q(email__icontains=search_query)
         )
 
-    existing_users = existing_users.order_by(Lower("username"), "id")
+    for user in existing_users:
+        user.access_level_label = get_access_level_label(user)
+        user.can_be_managed_by_current_user = can_manage_user_record(request.user, user)
     return render(
         request,
         "crm/users.html",
@@ -440,17 +512,17 @@ def users(request):
 
 @login_required
 def create_user(request):
-    if not request.user.is_superuser:
-        return HttpResponseForbidden("Only superusers can create system users.")
+    if not _has_permission(request.user, "auth.add_user"):
+        return HttpResponseForbidden("Only admin users can create system users.")
 
     if request.method == "POST":
-        form = SystemUserCreationForm(request.POST)
+        form = SystemUserCreationForm(request.POST, current_user=request.user)
         if form.is_valid():
             created_user = form.save()
             messages.success(request, f"User '{created_user.username}' was created.")
             return redirect("users")
     else:
-        form = SystemUserCreationForm()
+        form = SystemUserCreationForm(current_user=request.user)
 
     return render(
         request,
@@ -465,19 +537,21 @@ def create_user(request):
 
 @login_required
 def edit_user(request, user_id):
-    if not request.user.is_superuser:
-        return HttpResponseForbidden("Only superusers can manage system users.")
+    if not _has_permission(request.user, "auth.change_user"):
+        return HttpResponseForbidden("Only admin users can manage system users.")
 
     user_to_edit = get_object_or_404(get_user_model(), pk=user_id)
+    if not can_manage_user_record(request.user, user_to_edit):
+        return HttpResponseForbidden("You cannot manage this user.")
 
     if request.method == "POST":
-        form = SystemUserUpdateForm(request.POST, instance=user_to_edit)
+        form = SystemUserUpdateForm(request.POST, instance=user_to_edit, current_user=request.user)
         if form.is_valid():
             form.save()
             messages.success(request, f"User '{user_to_edit.username}' was updated.")
             return redirect("users")
     else:
-        form = SystemUserUpdateForm(instance=user_to_edit)
+        form = SystemUserUpdateForm(instance=user_to_edit, current_user=request.user)
 
     return render(
         request,
@@ -493,10 +567,12 @@ def edit_user(request, user_id):
 
 @login_required
 def change_user_password(request, user_id):
-    if not request.user.is_superuser:
-        return HttpResponseForbidden("Only superusers can manage system users.")
+    if not _has_permission(request.user, "auth.change_user"):
+        return HttpResponseForbidden("Only admin users can manage system users.")
 
     user_to_update = get_object_or_404(get_user_model(), pk=user_id)
+    if not can_manage_user_record(request.user, user_to_update):
+        return HttpResponseForbidden("You cannot manage this user.")
 
     if request.method == "POST":
         form = SystemUserPasswordChangeForm(user_to_update, request.POST)
@@ -521,13 +597,15 @@ def change_user_password(request, user_id):
 
 @login_required
 def delete_user(request, user_id):
-    if not request.user.is_superuser:
-        return HttpResponseForbidden("Only superusers can manage system users.")
+    if not _has_permission(request.user, "auth.delete_user"):
+        return HttpResponseForbidden("Only admin users can manage system users.")
 
     if request.method != "POST":
         return HttpResponseForbidden("Users can only be deleted with a POST request.")
 
     user_to_delete = get_object_or_404(get_user_model(), pk=user_id)
+    if not can_manage_user_record(request.user, user_to_delete):
+        return HttpResponseForbidden("You cannot manage this user.")
     username = user_to_delete.username
 
     if user_to_delete.is_superuser:

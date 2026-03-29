@@ -62,7 +62,7 @@
                                         {% for service in linked_services %}
                                             <div class="linked-service-badge">
                                                 <span class="linked-service-name">{{ service.name }}</span>
-                                                <span class="linked-service-price">{{ service.price }}</span>
+                                                <span class="linked-service-price">{{ default_currency }} {{ service.price }}</span>
                                             </div>
                                         {% endfor %}
                                     {% else %}

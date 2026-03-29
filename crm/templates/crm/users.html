@@ -8,7 +8,7 @@
     <div class="toolbar">
         <div>
             <h2>Team Directory</h2>
-            <p class="meta page-intro">Manage the login accounts for people who use the CRM. Superusers remain protected from deletion, and their critical access flags stay locked down.</p>
+            <p class="meta page-intro">Manage the login accounts for people who use the CRM. User accounts have three access levels: User, Admin, and System Admin. System Admin includes Django admin sign-in at /admin/.</p>
         </div>
         <a class="button-link" href="{% url 'create_user' %}">Create user</a>
     </div>
@@ -51,12 +51,12 @@
                                 {% endif %}
                             </td>
                             <td>
-                                {% if user.is_superuser %}
-                                    <span class="role-badge superuser">Superuser</span>
-                                {% elif user.is_staff %}
-                                    <span class="role-badge">Staff user</span>
+                                {% if user.access_level_label == "System Admin" %}
+                                    <span class="role-badge superuser">System Admin</span>
+                                {% elif user.access_level_label == "Admin" %}
+                                    <span class="role-badge">Admin</span>
                                 {% else %}
-                                    <span class="role-badge standard">Standard user</span>
+                                    <span class="role-badge standard">User</span>
                                 {% endif %}
                             </td>
                             <td>
@@ -68,10 +68,14 @@
                             </td>
                             <td>
                                 <div class="button-row">
-                                    <a class="button-link" href="{% url 'edit_user' user.id %}">Edit</a>
-                                    <a class="button-link" href="{% url 'change_user_password' user.id %}">Change Password</a>
+                                    {% if user.can_be_managed_by_current_user %}
+                                        <a class="button-link" href="{% url 'edit_user' user.id %}">Edit</a>
+                                        <a class="button-link" href="{% url 'change_user_password' user.id %}">Change Password</a>
+                                    {% endif %}
                                     {% if user.is_superuser %}
                                         <span class="meta">Delete disabled</span>
+                                    {% elif not user.can_be_managed_by_current_user %}
+                                        <span class="meta">Managed by System Admin</span>
                                     {% else %}
                                         <form method="post" action="{% url 'delete_user' user.id %}">
                                             {% csrf_token %}
