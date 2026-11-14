@@ -165,6 +165,9 @@ body {
 }
 
 .topbar {
+    /* Keep the profile dropdown above the card's backdrop-filter stacking context. */
+    position: relative;
+    z-index: 1;
     display: flex;
     align-items: center;
     justify-content: space-between;

@@ -118,6 +118,28 @@ python manage.py createsuperuser
 python manage.py changepassword <username>
 ```
 
+### Recover local admin access
+
+There is no built-in password for `admin`. Its password is chosen when the
+superuser is created, and Django stores only a password hash in the local
+database. Passwords used in the tests are unrelated to your local accounts.
+
+From the project directory, use the existing virtual environment to reset it:
+
+```powershell
+.\.venv\Scripts\python.exe manage.py changepassword admin
+```
+
+Enter your new password twice. The terminal does not show characters while you
+type a password. Run this in a separate terminal if the development server is
+already running. If Django reports that the user does not exist, create a
+superuser with `.\.venv\Scripts\python.exe manage.py createsuperuser`.
+
+Loading demo data creates `demo.sysadmin` with the demo password `DemoPass123!`.
+This account is a System Admin, but it is not a Django superuser and cannot
+change the `admin` superuser through the CRM user management screen. Resetting
+`admin` with the command above does not require its old password.
+
 ### Run tests
 
 ```powershell
