@@ -2,6 +2,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db.models import Count, Prefetch, Q, Value
 from django.db.models.functions import Coalesce, Lower
+from django.db.models.deletion import ProtectedError
 from django.http import HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 
@@ -206,7 +207,11 @@ def delete_product(request, product_id):
 
     product = get_object_or_404(Product, pk=product_id)
     product_name = str(product)
-    product.delete()
+    try:
+        product.delete()
+    except ProtectedError:
+        messages.error(request, "This product is used on a service order and cannot be deleted.")
+        return redirect("products")
     messages.success(request, f"Product '{product_name}' was deleted.")
     return redirect("products")
 
@@ -314,6 +319,10 @@ def delete_service(request, service_id):
 
     service = get_object_or_404(Service, pk=service_id)
     service_name = str(service)
-    service.delete()
+    try:
+        service.delete()
+    except ProtectedError:
+        messages.error(request, "This service is used on a service order and cannot be deleted.")
+        return redirect("services")
     messages.success(request, f"Service '{service_name}' was deleted.")
     return redirect("services")

@@ -1,0 +1,44 @@
+{% extends 'crm/base.html' %}
+
+{% block title %}Service Orders{% endblock %}
+{% block page_title %}Service Orders{% endblock %}
+{% block page_copy %}Keep customer work, instructions, services, and deadlines together.{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+    <div><h2>Orders</h2><p class="meta">{{ page_obj.paginator.count }} draft order{{ page_obj.paginator.count|pluralize }}</p></div>
+    {% if perms.crm.add_serviceorder %}<a class="button-link" href="{% url 'create_order' %}">Create order</a>{% endif %}
+</div>
+<form method="get" class="search-form">
+    <label class="visually-hidden" for="order-search">Search orders</label>
+    <input type="search" id="order-search" class="search-input" name="q" value="{{ search_query }}" placeholder="Reference, customer, assigned user, or notes">
+    <button class="button" type="submit">Search</button>
+    {% if search_query %}<a class="button-link" href="{% url 'orders' %}">Clear</a>{% endif %}
+</form>
+<div class="data-table-shell order-table">
+    <table class="data-table">
+        <thead><tr><th>Order</th><th>Customer</th><th>Assignee</th><th>Items / deadlines</th><th>Total</th><th>Actions</th></tr></thead>
+        <tbody>
+        {% for order in page_obj %}
+            <tr>
+                <td><strong>{{ order.reference }}</strong><div class="meta">{{ order.get_status_display }} · {{ order.created_at|date:'d M Y' }}</div></td>
+                <td>{{ order.customer }}{% if order.customer.company %}<div class="meta">{{ order.customer.company }}</div>{% endif %}</td>
+                <td>{{ order.assigned_to.get_full_name|default:order.assigned_to.username|default:'Unassigned' }}</td>
+                <td>{% for item in order.items.all %}<div>{{ item.product.name }}<div class="meta">Due {{ item.due_date|date:'d M Y' }}{% if item.due_time %} at {{ item.due_time|time:'H:i' }}{% endif %}</div></div>{% endfor %}</td>
+                <td class="money">{{ order.currency }} {{ order.total|floatformat:2 }}</td>
+                <td>{% if perms.crm.change_serviceorder %}<a class="button-link" href="{% url 'edit_order' order.pk %}">Edit draft</a>{% endif %}</td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="6" class="empty-state">{% if search_query %}No orders match your search.{% else %}No orders yet. Create a draft to capture your first job.{% endif %}</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% if page_obj.has_other_pages %}
+<nav class="button-row" aria-label="Orders pages">
+    {% if page_obj.has_previous %}<a class="button-link" href="?q={{ search_query|urlencode }}&amp;page={{ page_obj.previous_page_number }}">Previous</a>{% endif %}
+    <span class="meta">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+    {% if page_obj.has_next %}<a class="button-link" href="?q={{ search_query|urlencode }}&amp;page={{ page_obj.next_page_number }}">Next</a>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}

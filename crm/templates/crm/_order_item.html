@@ -1,0 +1,12 @@
+<section class="panel order-item" data-order-item data-form-prefix="{{ item_form.prefix }}">
+    <div class="order-row-footer">
+        <h3 data-item-heading>Item</h3>
+        <button class="button secondary" type="button" data-remove-item>Remove item</button>
+    </div>
+    <div class="form-layout" data-item-fields>
+        {% include 'crm/_order_fields.html' with form=item_form %}
+    </div>
+    <h4>Services</h4>
+    {% include 'crm/_order_services.html' with service_formset=item_form.services general=False %}
+    <p class="order-item-total">Item total: <strong data-item-total>—</strong></p>
+</section>

@@ -123,3 +123,7 @@ STATIC_URL = "static/"
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "home"
 LOGOUT_REDIRECT_URL = "login"
+
+# Nested order forms allow up to 50 items with 50 service occurrences each.
+# Keep Django's request body size limit while allowing their form fields.
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 20000

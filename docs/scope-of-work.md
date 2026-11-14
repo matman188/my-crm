@@ -3,6 +3,9 @@
 Status: Draft for ongoing refinement. This document defines planned work; it does
 not indicate that the features below have already been implemented.
 
+See [development status](development-status.md) for delivered features and current
+implementation choices.
+
 Created: 14 November 2026  
 Primary example: Ballet shoe sewing service  
 Application: My CRM
@@ -30,9 +33,10 @@ customer's physical items; its invoice is a separate billing record.
 | Order closure | Closure is a manual action. Payment must be settled before an order can be closed; payment does not close it automatically. |
 | Payments in the first version | Full payment only. Deposits, partial payments, and payment instalments are outside the initial scope. |
 | Business setup | One business per installation initially. The software should be reusable for other businesses through configuration. |
-| Customer selection | Search existing customers or create a customer while capturing an order. |
+| Customer selection | A single searchable dropdown shows clickable matches. A Create New button opens a customer modal while retaining the order being entered. |
 | Product units (D01) | Whether a product represents a shoe, pair, or another unit depends on product setup. No shoe-specific unit is imposed by the order workflow. |
 | Services per item | An item may have multiple services, including repeated selections of the same service. Each occurrence is charged separately. |
+| Quantities (D03) | Quantities are entered only on services. Each charge is service quantity × unit price. Products have no separate quantity or item label/description field. |
 | Service notes | Each selected service occurrence supports its own optional text note for internal instructions; this note is excluded from the invoice. |
 | Order notes | Provide a global notes section for the whole order, separate from individual service notes and customer-visible invoice notes. |
 | Additional charges | Additional requests, such as overnight turnaround, can be represented as services. |
@@ -47,7 +51,10 @@ explicitly identified as confirmed. Open decisions are listed in section 13.
 
 ## 3. Current implementation baseline
 
-The repository already provides:
+This records the baseline before the draft service-order milestone. See the
+development status linked above for subsequent implementation progress.
+
+The initial repository provides:
 
 - Login, logout, profile editing, and User, Admin, and System Admin access levels.
 - Customer creation, editing, deletion, and searching, including contact details,
@@ -72,8 +79,8 @@ services during order entry still need to be implemented explicitly.
    the order being entered.
 3. The operator creates a draft service order and adds a separate order item for
    each physical item or group that needs its own instructions or deadline.
-4. For each order item, the operator selects the product/type, records identifying
-   details and instructions, selects one or more applicable services (including
+4. For each order item, the operator selects the product/type, records any
+   instructions, selects one or more applicable services (including
    repeated selections), optionally notes each service occurrence, and sets a
    deadline date with an optional time.
 5. The operator adds any general extra services, such as an order-wide overnight
@@ -96,6 +103,11 @@ services during order entry still need to be implemented explicitly.
 - Reuse the existing customer records and search capabilities. Allow quick
   customer creation from order entry, with duplicate suggestions using available
   contact details.
+- Use one customer field that filters a dropdown as the operator types. Provide
+  a Create New button above it to open customer details in a modal, with clear
+  apply/cancel actions that preserve the draft.
+- Keep labels brief. Put order details at the bottom and label the assignment
+  field Assignee (or Assigned To).
 - Give each order a unique reference, customer, creation date, creator, order-wide notes,
   confirmation date, and optional assigned user.
 - Provide a global notes section for general order instructions, alongside optional
@@ -117,9 +129,8 @@ the same catalog product can therefore appear as separate items on one order.
 
 Each order item must support:
 
-- A catalog product/type and a description or identifying label.
-- Quantity/unit according to the selected product's setup, without requiring a
-  fixed shoe-versus-pair choice for all businesses.
+- A catalog product/type. A product can represent a shoe, pair, or another unit
+  according to catalog setup. Do not add a separate item label or product quantity.
 - Work instructions and a deadline date with an optional time.
 - One or more selected service occurrences, including repeats of the same service,
   each with its own charge and optional internal text note.
@@ -154,6 +165,7 @@ invented midnight deadline.
   levels.
 - Calculate totals from the selected services, their captured prices, and explicit
   charge quantities. Show the item breakdown, general charges, and order total.
+  Each charge is service quantity × unit price, with no product quantity multiplier.
   Count each repeated occurrence once at its applicable charge quantity; selecting
   a service twice must not be collapsed into one charge. Editing or removing one
   occurrence must not modify the other occurrence or its note.
@@ -350,7 +362,7 @@ These are planning concepts, not a final database schema:
 | Customer | Existing customer/contact record |
 | Product / Service | Existing reusable catalogs, extended for explicit global service applicability |
 | ServiceOrder | Customer, reference, lifecycle, assigned user, key dates, and order-wide internal notes |
-| OrderItem | Actual customer item/type, description, product-defined quantity/unit, deadline date with optional time, work and delivery state |
+| OrderItem | Customer product/type, optional item notes, deadline date with optional time, work and delivery state; no item label or product quantity |
 | OrderServiceCharge | One selected service occurrence, item-or-order scope, charge quantity, captured price, and optional internal text note; repeated occurrences are allowed |
 | Invoice / InvoiceLine | Issued identity and financial/business/customer snapshots |
 | Payment | Full settlement amount, date, method, reference, and correction history |
@@ -410,6 +422,11 @@ These phases are a suggested implementation order, not a time or cost estimate.
 15. A worker can read general order notes and the notes for each selected service.
     Those internal notes are absent from the customer invoice PDF and invoice email,
     while any explicitly customer-facing invoice note is included.
+16. Typing in the customer field shows selectable matches. Creating a customer in
+    the modal or cancelling it preserves the order's other fields and selections.
+17. An operator enters quantities only on service rows, sees each charge calculated
+    as quantity × unit price, and finds Assignee and order notes below the items
+    and extras.
 
 ## 12. Outside the initial scope
 
@@ -427,12 +444,12 @@ need an explicit decision; they are not assumed to be included automatically.
 
 ## 13. Open decisions and suggestions
 
-Decisions D01 (product-defined units) and D02 (deadline date with optional time)
-are resolved in section 2. The remaining IDs are kept stable for future reference.
+Decisions D01 (product-defined units), D02 (deadline date with optional time),
+and D03 (service-only quantities) are resolved in section 2. The remaining IDs
+are kept stable for future reference.
 
 | ID | Decision to confirm | Suggested starting point |
 | --- | --- | --- |
-| D03 | How are charge quantities derived from product quantities and service occurrences, and which extras apply once per order? | Keep charge quantities explicit, charge every selected service occurrence, and show order-level extras separately. |
 | D04 | Can an order be closed while work or delivery is incomplete? | Always require full payment; warn before manual closure with outstanding work/collection. Confirm whether a hard block is preferred. |
 | D05 | Who can create/confirm orders, assign workers, record payment, close/reopen, and see finances? | Agree the operator/worker/supervisor permissions before adding roles or changing existing ones. |
 | D06 | Which business and tax details, payment terms, invoice numbering, and disclaimers are needed? | Review actual business details and a sample invoice; do not invent tax status or final disclaimer wording. |
@@ -452,3 +469,5 @@ requirements so planned features are not mistaken for delivered functionality.
 | --- | --- |
 | 14 November 2026 | Initial scope captured from the business workflow. Confirmed manual closure, full payment only, and one business per installation initially. |
 | 14 November 2026 | Confirmed product-defined units, deadline dates with optional times, repeated service selections on one product, optional internal notes per service occurrence, and a global order notes section. Updated requirements and acceptance scenarios; resolved D01/D02 and retained overnight interpretation as D11. |
+| 14 November 2026 | Implemented the draft service-order milestone. Delivery details, provisional pricing/permission choices, verification, and remaining work are recorded separately in development-status.md. |
+| 14 November 2026 | Simplified the order form: searchable customer dropdown and creation modal, order details at the bottom, Assignee label, no item label/description or product quantity, service-only quantities, and shorter wording. Resolved D03. |

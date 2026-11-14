@@ -3,6 +3,7 @@ from django.urls import path
 from crm.views import (
     change_user_password,
     create_customer,
+    create_order,
     create_product,
     create_product_category,
     create_service,
@@ -14,12 +15,14 @@ from crm.views import (
     delete_service,
     delete_user,
     edit_customer,
+    edit_order,
     edit_product,
     edit_product_category,
     edit_profile,
     edit_service,
     edit_user,
     home,
+    orders,
     product_categories,
     products,
     services,
@@ -29,6 +32,9 @@ from crm.views import (
 
 urlpatterns = [
     path("", home, name="home"),
+    path("orders/", orders, name="orders"),
+    path("orders/create/", create_order, name="create_order"),
+    path("orders/<int:order_id>/edit/", edit_order, name="edit_order"),
     path("customers/", customers, name="customers"),
     path("customers/create/", create_customer, name="create_customer"),
     path("customers/<int:customer_id>/edit/", edit_customer, name="edit_customer"),

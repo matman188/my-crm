@@ -1,6 +1,7 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q
+from django.db.models.deletion import ProtectedError
 from django.db.models.functions import Lower
 from django.http import HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
@@ -96,6 +97,10 @@ def delete_customer(request, customer_id):
 
     customer = get_object_or_404(Customer, pk=customer_id)
     customer_name = str(customer)
-    customer.delete()
+    try:
+        customer.delete()
+    except ProtectedError:
+        messages.error(request, "This customer is used on a service order and cannot be deleted.")
+        return redirect("customers")
     messages.success(request, f"Customer '{customer_name}' was deleted.")
     return redirect("customers")

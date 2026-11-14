@@ -1,0 +1,92 @@
+{% extends 'crm/base.html' %}
+{% load static %}
+
+{% block title %}{{ page_title }}{% endblock %}
+{% block page_title %}{{ page_title }}{% endblock %}
+{% block page_copy %}Add a customer, items, and services.{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+    <div>
+        <h2>{{ page_title }}</h2>
+        <p class="meta">Draft · {{ order.currency }}</p>
+    </div>
+    <a class="button-link" href="{% url 'orders' %}">Back to orders</a>
+</div>
+<noscript><p class="non-field-errors">Enable JavaScript to use this form.</p></noscript>
+<form method="post" class="form-grid order-editor" data-order-editor data-currency="{{ order.currency }}">
+    {% csrf_token %}
+    {{ editor.form.revision }}
+    {{ editor.form.revision.errors }}
+    {{ editor.form.customer_mode }}
+    {{ editor.form.customer }}
+    <p class="non-field-errors" data-editor-feedback role="alert" hidden></p>
+    {% if editor.form.non_field_errors %}<div class="non-field-errors" role="alert">{{ editor.form.non_field_errors }}</div>{% endif %}
+    {% if editor.form.errors or editor.items.errors or editor.general.errors %}
+        <p class="non-field-errors" role="alert">Check the fields below, then save again.</p>
+    {% endif %}
+    <section class="panel customer-section">
+        <div class="order-row-footer">
+            <h3>Customer</h3>
+            {% if perms.crm.add_customer %}<button class="button secondary" type="button" data-create-customer>Create New</button>{% endif %}
+        </div>
+        <div class="customer-picker" data-customer-picker>
+            <label class="visually-hidden" for="customer-search">Customer</label>
+            <input type="text" id="customer-search" placeholder="Search customers" autocomplete="off" required
+                role="combobox" aria-autocomplete="list" aria-controls="customer-options" aria-expanded="false"
+                aria-describedby="customer-search-status" data-customer-search>
+            <ul id="customer-options" class="customer-options" role="listbox" aria-label="Customers" hidden data-customer-options></ul>
+        </div>
+        <span class="role-badge" data-new-customer-badge hidden>New customer</span>
+        <span id="customer-search-status" class="visually-hidden" role="status" data-customer-search-status></span>
+        {{ editor.form.customer.errors }}{{ editor.form.customer_mode.errors }}
+    </section>
+    <div>
+        <h3>Items</h3>
+        {{ editor.items.management_form }}
+        {% if editor.items.non_form_errors %}<div class="non-field-errors">{{ editor.items.non_form_errors }}</div>{% endif %}
+        <div class="order-items" data-item-rows>
+            {% for item_form in editor.items %}{% include 'crm/_order_item.html' %}{% endfor %}
+        </div>
+        <button class="button secondary" type="button" data-add-item>Add item</button>
+    </div>
+    <section class="panel">
+        <h3>Extras</h3>
+        <p class="meta">Services for the whole order.</p>
+        {% include 'crm/_order_services.html' with service_formset=editor.general general=True %}
+    </section>
+    <section class="panel">
+        <h3>Order details</h3>
+        <div class="form-layout">
+            <div class="form-field">
+                <label for="{{ editor.form.assigned_to.id_for_label }}">Assignee</label>
+                {{ editor.form.assigned_to }}{{ editor.form.assigned_to.errors }}
+            </div>
+            <div class="form-field full">
+                <label for="{{ editor.form.notes.id_for_label }}">{{ editor.form.notes.label }}</label>
+                {{ editor.form.notes }}{{ editor.form.notes.errors }}
+            </div>
+        </div>
+    </section>
+    <div class="order-save-bar">
+        <div><span class="meta">Total</span><strong class="order-grand-total" data-order-total aria-live="polite">{{ order.currency }} —</strong></div>
+        <button class="button" type="submit">Save draft</button>
+    </div>
+    <template data-item-template>{% include 'crm/_order_item.html' with item_form=editor.empty_item %}</template>
+    <dialog class="customer-dialog" aria-labelledby="customer-dialog-title" data-customer-dialog data-has-errors="{{ editor.customer_form.errors|yesno:'true,false' }}">
+        <h2 id="customer-dialog-title">New customer</h2>
+        <div class="form-layout" data-new-customer>{% include 'crm/_order_fields.html' with form=editor.customer_form %}</div>
+        <div class="button-row customer-dialog-actions">
+            <button class="button secondary" type="button" data-cancel-customer>Cancel</button>
+            <button class="button" type="button" data-use-customer>Use customer</button>
+        </div>
+    </dialog>
+</form>
+{{ service_catalog|json_script:'order-service-catalog' }}
+{{ customer_catalog|json_script:'order-customer-catalog' }}
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{% static 'crm/js/order-customer.js' %}" defer></script>
+<script src="{% static 'crm/js/order-form.js' %}" defer></script>
+{% endblock %}

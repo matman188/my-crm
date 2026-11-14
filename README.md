@@ -8,6 +8,10 @@ See the [scope of work](docs/scope-of-work.md) for the planned service-order,
 invoicing, payment, dashboard, and reporting workflow, confirmed decisions, and
 open questions.
 
+Draft service orders are now available from **Orders** in the sidebar. See
+[development status](docs/development-status.md) for the implemented workflow,
+pricing rules, setup instructions, and remaining milestones.
+
 ## Stack
 
 - Python

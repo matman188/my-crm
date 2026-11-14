@@ -1,0 +1,14 @@
+{% for hidden in form.hidden_fields %}{{ hidden }}{{ hidden.errors }}{% endfor %}
+{% if form.non_field_errors %}<div class="non-field-errors">{{ form.non_field_errors }}</div>{% endif %}
+{% for field in form.visible_fields %}
+    {% if field.name == 'DELETE' %}
+        <span class="order-delete-control">{{ field }}</span>
+    {% else %}
+        <div class="form-field{% if field.name == 'notes' or field.name == 'description' %} full{% endif %}">
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}<span class="helptext">{{ field.help_text }}</span>{% endif %}
+            {{ field.errors }}
+        </div>
+    {% endif %}
+{% endfor %}

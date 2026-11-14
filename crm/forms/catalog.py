@@ -30,7 +30,7 @@ class ServiceForm(forms.ModelForm):
     products = forms.ModelMultipleChoiceField(
         queryset=Product.objects.none(),
         required=False,
-        help_text="Optional. Leave all unchecked if this service is not tied to a product yet.",
+        help_text="Leave all unchecked for a global service, available on any product or as an order-wide extra.",
     )
 
     def __init__(self, *args, **kwargs):

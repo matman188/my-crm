@@ -1,0 +1,13 @@
+<div class="order-services" data-services{% if general %} data-general{% endif %}>
+    {{ service_formset.management_form }}
+    {% if service_formset.non_form_errors %}<div class="non-field-errors">{{ service_formset.non_form_errors }}</div>{% endif %}
+    <div class="order-service-rows" data-service-rows>
+        {% for charge_form in service_formset %}
+            {% include 'crm/_order_charge.html' %}
+        {% endfor %}
+    </div>
+    <button class="button secondary" type="button" data-add-charge>Add {% if general %}extra{% else %}service{% endif %}</button>
+    <template data-charge-template>
+        {% include 'crm/_order_charge.html' with charge_form=service_formset.empty_charge %}
+    </template>
+</div>

@@ -1,0 +1,10 @@
+{% load l10n %}
+<div class="service-charge-row" data-charge data-form-prefix="{{ charge_form.prefix }}" data-original-service="{{ charge_form.original_service_id }}" data-original-price="{{ charge_form.original_price|unlocalize }}">
+    <div class="form-layout">
+        {% include 'crm/_order_fields.html' with form=charge_form %}
+    </div>
+    <div class="order-row-footer">
+        <span class="meta">Price: <span data-unit-price>—</span> · Total: <strong data-charge-total>—</strong></span>
+        <button class="button secondary" type="button" data-remove-charge>Remove service</button>
+    </div>
+</div>
