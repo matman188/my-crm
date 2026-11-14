@@ -2,6 +2,12 @@
 
 My CRM is a Django 6 application for managing customers, users, products, services, and system settings in a lightweight CRM workflow.
 
+## Development Scope
+
+See the [scope of work](docs/scope-of-work.md) for the planned service-order,
+invoicing, payment, dashboard, and reporting workflow, confirmed decisions, and
+open questions.
+
 ## Stack
 
 - Python
