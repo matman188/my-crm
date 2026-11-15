@@ -23,10 +23,12 @@ scroll position. Unsaved form data is not stored in the browser. Refresh/closing
 the tab uses the browser's own unsaved-change prompt; normal links use the app's
 modal. Save itself does not require confirmation.
 
-Orders has All orders, My Orders, Unassigned, Due Today, Overdue, Unpaid and
+Orders has All orders, Open Orders, My Orders, Unassigned, Due Today, Overdue, Unpaid and
 Awaiting Collection views. Counts respect the customer/search scope. Changing
 queues resets stage/payment/collection filters; further filtering works within
-the selected queue. My Orders includes all stages assigned to the signed-in user.
+the selected queue. Open Orders includes Draft and In Progress, independently of
+assignment, payment or collection. It also has a matching dashboard count.
+My Orders includes all stages assigned to the signed-in user.
 Unassigned includes Draft and In Progress. Unpaid includes In Progress and Complete
 with Unpaid payment status. Awaiting Collection means Complete and not collected,
 independently of payment. Raw stage/payment filters can still find other records.

@@ -128,6 +128,81 @@ class QualityOfLifeTests(TestCase):
             [first.pk, earlier.pk, later.pk, closed.pk],
         )
 
+    def test_open_orders_view_includes_only_draft_and_in_progress(self):
+        draft = self.make_order(status="draft")
+        progress = self.make_order(status="in_progress", assigned_to=self.user)
+        self.make_order(status="complete", payment_status="unpaid")
+        self.make_order(status="cancelled")
+        before = list(ServiceOrder.objects.values())
+        response = self.client.get(reverse("orders"), {"view": "open"})
+        self.assertEqual(
+            {order.pk for order in response.context["page_obj"]},
+            {draft.pk, progress.pk},
+        )
+        queue = next(
+            view
+            for view in response.context["quick_views"]
+            if view["label"] == "Open Orders"
+        )
+        self.assertTrue(queue["active"])
+        self.assertEqual(queue["count"], 2)
+        self.assertContains(response, "Open Orders")
+        home = self.client.get(reverse("home"))
+        self.assertEqual(
+            next(
+                card["count"]
+                for card in home.context["work_cards"]
+                if card["key"] == "open"
+            ),
+            2,
+        )
+        self.assertEqual(list(ServiceOrder.objects.values()), before)
+
+    def test_open_orders_preserves_search_customer_scope_and_pagination(self):
+        other = Customer.objects.create(
+            first_name="Alex",
+            last_name="Other",
+            email="open-other@example.com",
+            primary_phone="0123",
+        )
+        ServiceOrder.objects.bulk_create(
+            [
+                ServiceOrder(
+                    customer=self.customer,
+                    currency="ZAR",
+                    status="draft" if index % 2 else "in_progress",
+                )
+                for index in range(26)
+            ]
+        )
+        ServiceOrder.objects.create(customer=other, currency="ZAR", status="draft")
+        self.make_order(status="complete")
+        filters = {
+            "view": "open",
+            "q": "Alex",
+            "customer": self.customer.pk,
+            "sort": "oldest",
+        }
+        response = self.client.get(reverse("orders"), filters)
+        self.assertEqual(response.context["page_obj"].paginator.count, 26)
+        for value in (
+            "view=open",
+            "q=Alex",
+            f"customer={self.customer.pk}",
+            "sort=oldest",
+            "page=2",
+        ):
+            self.assertContains(response, value)
+        response = self.client.get(reverse("orders"), dict(filters, page=2))
+        self.assertEqual(len(response.context["page_obj"]), 1)
+        self.assertIn(response.context["page_obj"][0].status, ("draft", "in_progress"))
+        queue = next(
+            view
+            for view in response.context["quick_views"]
+            if view["label"] == "Open Orders"
+        )
+        self.assertEqual(queue["count"], 26)
+
     def test_queue_counts_dashboard_and_filters_match(self):
         self.make_order(status="in_progress", assigned_to=self.user)
         self.make_order(status="complete", assigned_to=self.worker)

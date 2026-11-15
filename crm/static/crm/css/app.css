@@ -284,6 +284,11 @@ body {
     box-shadow: var(--shadow);
 }
 
+.card.card-list {
+    width: 100%;
+    max-width: none;
+}
+
 .meta {
     color: var(--muted);
 }

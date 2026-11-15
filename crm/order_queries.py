@@ -21,6 +21,7 @@ from crm.models import OrderItem, ServiceOrder, SystemSettings
 ACTIVE = (ServiceOrder.Status.DRAFT, ServiceOrder.Status.IN_PROGRESS)
 WORK_VIEWS = (
     ("all", "All orders"),
+    ("open", "Open Orders"),
     ("mine", "My Orders"),
     ("unassigned", "Unassigned"),
     ("due_today", "Due Today"),
@@ -59,6 +60,7 @@ def with_deadlines(queryset, now=None):
 def work_condition(view, user):
     return {
         "all": Q(),
+        "open": Q(status__in=ACTIVE),
         "mine": Q(assigned_to=user),
         "unassigned": Q(status__in=ACTIVE, assigned_to__isnull=True),
         "due_today": Q(is_due_today=True),
