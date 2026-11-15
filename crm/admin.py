@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from crm.forms.customers import CustomerForm
+from crm.forms.settings import SystemSettingsAdminForm
 from crm.models import Customer, Product, ProductCategory, Service, SystemSettings
 
 
@@ -54,6 +55,7 @@ class ServiceAdmin(admin.ModelAdmin):
 
 @admin.register(SystemSettings)
 class SystemSettingsAdmin(admin.ModelAdmin):
+    form = SystemSettingsAdminForm
     list_display = ("company_name", "default_currency")
 
     def has_add_permission(self, request):

@@ -1,11 +1,13 @@
 # Next milestone: invoice design and delivery
 
-Recorded: 15 November 2026. Status: planning handover; invoicing is not implemented.
+Recorded: 15 November 2026. Status: settings and sample PDF preview implemented;
+order-linked invoice issuance, storage/history and email remain planned.
 
 This records the latest proposed approach discussed with the owner. Use it with
 [scope section 6](scope-of-work.md#6-invoices-pdf-layout-and-email) and
-[development status](development-status.md). Start next time with business invoice
-settings and a sample PDF, then implement issuance and storage. Connect email
+[development status](development-status.md). Step 1 is complete: see
+[invoice settings and sample preview](invoice-preview.md). Next implement order-linked
+issuance and storage after agreeing the correction rules. Connect email
 delivery after the mail server is configured.
 
 Latest refinement, 15 November 2026: keep the Service Order as the primary work
@@ -32,8 +34,9 @@ Capture automatically when issuing:
 - Business identity, customer billing details, and product/service descriptions.
 - Product grouping, service quantities, captured unit prices, currency, line
   totals, subtotal and any agreed tax breakdown, and total.
-- Payment due date/terms, banking instructions, disclaimer and customer-facing
-  Invoice Note. Keep the terms and instructions used at issue time.
+- Banking instructions, disclaimer and customer-facing Invoice Note. Keep the
+  instructions and wording used at issue time. Payment terms and automatic
+  payment due dates are deferred for now (15 November 2026).
 - The template version and a reference to the issued PDF file.
 - The information needed to retain voided/replaced invoices, once the correction
   process has been agreed. Prefer one active invoice per order initially.
@@ -67,14 +70,15 @@ create duplicate issued invoices. Previewing is never an issuance action.
 
 ## PDF layout
 
-Start with one polished A4 template, reviewed using a sample PDF before finalizing
-the implementation. An HTML/CSS template rendered to PDF is the proposed approach.
-Select the renderer after checking the existing Windows/Python development setup,
-deployment requirements, fonts and multi-page output; no library is selected yet.
+Step 1 provides one fixed A4 sample template using ReportLab, selected for the
+Windows/Python development setup and predictable PDF layout. It uses embedded
+fonts, short/multi-page samples and a preview modal. This refines the earlier
+HTML/CSS-renderer candidate. Review the sample before adapting the renderer to
+real invoice snapshots; order-linked previews and issuance are still future work.
 
 1. Header: business logo and details, invoice number and issue date.
 2. Customer block: customer billing details, service-order reference and payment
-   due date where configured.
+   information. Payment terms and calculated payment due dates are omitted for now.
 3. Charges: each product as a section heading with its service rows underneath.
    Service rows show quantity, unit price and line total. Products have no quantity
    field. Preserve repeated service occurrences in the billed lines/quantities.
@@ -92,7 +96,7 @@ Order Notes, Customer Notes, item notes and service-occurrence notes are interna
 and must be excluded from both the PDF and customer email. Add a separate Invoice
 Note for content intentionally addressed to the customer. Whether to show work
 deadlines remains open; if included, snapshot their issue-time values and clearly
-distinguish them from the payment due date. Later operational deadline changes
+identify them as work deadlines. Later operational deadline changes
 must not silently rewrite the invoice.
 
 ## Business settings versus fixed formatting
@@ -102,9 +106,8 @@ must not silently rewrite the invoice.
 | Business name, logo, address and contact details | Overall layout and placement of blocks |
 | Applicable registration/tax identifiers, once confirmed | Required document identifiers and order reference |
 | Banking details and payment instructions | Amount calculations, rounding, alignment and currency formatting |
-| Payment terms and default payment due period | Table columns, fonts, spacing and page-break rules |
 | Disclaimer, default customer-facing footer/Invoice Note | Clear separation of internal and customer-facing content |
-| One controlled accent colour | Readable print styling and image sizing |
+| One controlled accent colour | Fonts, spacing, table columns, page-break rules and image sizing |
 | Agreed invoice prefix/numbering configuration | Unique numbers, historical references and safe repeat issuance |
 | Email subject/message defaults | Correct issued PDF attachment and delivery history |
 
@@ -187,11 +190,12 @@ Keep credentials outside source control and ordinary business settings.
 
 1. Confirm the explicit Generate invoice trigger, eligible order stages, and the
    correction/cancellation rules (D07) before implementing issuance.
-2. Gather real business/logo/contact/banking details, payment terms, numbering
+2. Gather real business/logo/contact/banking details, numbering
    preference, applicable tax details and approved disclaimer text (D06). Use
    clearly labelled sample data while designing; do not invent final details.
-3. Build business invoice settings and one sample A4 PDF. Review short and long
-   invoices, repeated services, extras, long names, currency and page breaks.
+3. Completed: business invoice settings, logo upload and sample A4 PDF previews.
+   See [the implemented preview milestone](invoice-preview.md). Review the layout
+   with real business wording before issuing customer invoices.
 4. Implement the Invoice/line snapshots, unique numbering, stored private PDF and
    duplicate/concurrent-generation protection, including failure recovery.
 5. Add Preview, Generate, View, Download and Print on orders. Verify old invoices
@@ -202,8 +206,9 @@ Keep credentials outside source control and ordinary business settings.
    derived refund/net totals, order-date filters, status/payment/assignee filters
    and CSV export. Confirm refund validation and payment-summary rules first.
 
-No invoice models, migrations, settings, generation, preview, PDF storage or email
-delivery were implemented as part of this documentation update.
+Implemented: invoice settings, migration 0015, logo handling and ephemeral sample
+PDF preview/download. Invoice records/numbering, actual order invoice generation,
+issued PDF storage/history and email delivery remain planned.
 Refund recording, net-order totals and the order-based report are also planned,
 not implemented by this update.
 

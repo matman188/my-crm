@@ -397,6 +397,10 @@ the simple order report.
 
 ## 6. Invoices, PDF layout, and email
 
+Step 1 is implemented: [System Settings > Invoicing and sample PDF preview](invoice-preview.md).
+It supports saved business settings, logo upload and unsaved-value short/multi-page
+PDF previews using fictional data. It does not issue invoices for real orders.
+
 ### 6.1 Issuance and invoice integrity
 
 The latest proposed design, recorded 15 November 2026, is detailed in
@@ -418,7 +422,7 @@ final trigger and eligible stages before implementing it.
 - Submit remains the Draft-to-In Progress transition and does not introduce a
   Confirmed status. Normal saves and subsequent status changes do not issue invoices.
 - Preserve a snapshot of the customer billing details, business invoice settings,
-  product/service descriptions, quantities, prices, currency, totals, payment terms,
+  product/service descriptions, quantities, prices, currency, totals,
   banking details, disclaimer and customer-facing note at issue time. Retain invoice
   number, issue time, issuing user, order reference and template version.
 - View, download, print and email reuse the original stored PDF. Setting, customer,
@@ -437,13 +441,14 @@ final trigger and eligible stages before implementing it.
 
 - Business name, logo, address, and contact details.
 - Customer name, contact/billing details, and relevant business identifiers.
-- Invoice number and issue date, order reference, and payment due date/terms.
+- Invoice number and issue date, and order reference. Payment terms and calculated
+  payment due dates are deferred for now.
 - Product sections with service rows, service quantities, unit prices, line totals,
   general charges, subtotal, applicable tax breakdown, currency, and invoice total.
 - Banking/payment instructions and payment reference guidance.
 - Customer-facing notes, disclaimers, and terms.
 - Whether to show service deadlines is open. If shown, snapshot their issue-time
-  values and distinguish them from the payment due date; later operational edits
+  values and label them as work deadlines; later operational edits
   must not rewrite the invoice.
 - Repeated services must be reflected in the billed quantities or lines and totals.
   Order Notes, Customer Notes, item notes and service occurrence notes are internal
@@ -463,13 +468,13 @@ This scope does not establish tax or legal compliance requirements.
 | Customer-facing disclaimer, terms and default Invoice Note | Separate internal/customer-facing content; no arbitrary executable HTML templates |
 | One controlled accent colour | Fonts, spacing, logo sizing, readable A4 print layout, repeated headings, page breaks and numbering |
 | Default currency and business timezone | Historical snapshots so setting changes affect future invoices |
-| Agreed invoice prefix/numbering settings, payment terms and default due period | Uniqueness and integrity of invoice numbers and payment-date calculations |
+| Agreed invoice prefix/numbering settings | Uniqueness and integrity of issued invoice numbers |
 | Email subject/body defaults | Correct invoice attachment and delivery history |
 
 Start with one polished, branded invoice template. Review a sample PDF with the
-business owner before implementing the final layout. An HTML/CSS template rendered
-to PDF is a candidate approach; select the renderer after checking Windows/local
-development support, deployment support, pagination, and fonts. A drag-and-drop
+business owner before implementing the final order-linked layout. The sample
+milestone uses ReportLab with embedded fonts and visually checked A4 pagination,
+refining the earlier HTML/CSS-renderer candidate for this Windows setup. A drag-and-drop
 template designer and multiple layout themes are outside the initial scope.
 
 ### 6.4 Printing and emailing
@@ -496,8 +501,8 @@ Provide summary counts/totals and lists that link to filtered order views:
 - Items due today, due soon, and overdue, with their worker and order reference.
 - Orders with status In Progress and Complete orders awaiting collection.
 - Collected and uncollected orders, using the single order checkbox.
-- Unpaid invoices/orders, their outstanding value, and overdue payments when
-  payment due dates are configured.
+- Unpaid invoices/orders and their outstanding value. Automatic overdue-payment
+  calculations are deferred with payment terms and payment due dates.
 - Workload by assigned user and order Total/Refunded/Net Order Value for the
   selected order-date period. Payments-received cash-flow metrics are deferred.
 
@@ -584,7 +589,7 @@ These are planning concepts, not a final database schema:
 | OrderRefund | Planned small entry attached to a Service Order: amount, date, reason and optional affected item/service; aggregate totals on the order and its report |
 | OrderEvent | Who changed an operational state, when, and why |
 | InvoiceEmailAttempt | Recipient, send result, timestamp, and retry history |
-| Business settings | Existing settings extended for invoices, banking, timezone, and payment terms |
+| Business settings | Existing settings extended for invoice content, banking, timezone and appearance; payment terms/due dates deferred |
 
 ## 10. Proposed delivery phases
 
@@ -710,11 +715,11 @@ collection tracking.
 | ID | Decision to confirm | Suggested starting point |
 | --- | --- | --- |
 | D05 | Who can create/confirm orders, change Status or Collected, assign workers, record payment, and see finances? | Agree the operator/worker/supervisor permissions before adding roles or changing existing ones. |
-| D06 | Which business and tax details, payment terms, invoice numbering, and disclaimers are needed? | Review actual business details and a sample invoice; do not invent tax status or final disclaimer wording. |
+| D06 | Which business and tax details, invoice numbering, and disclaimers are needed? | Review actual business details and a sample invoice; do not invent tax status or final disclaimer wording. Payment terms and calculated payment due dates are deferred for now. |
 | D07 | How are invoiced orders corrected, returned to Draft, cancelled, or refunded, including already-paid orders? | Preserve issued PDFs/numbers and record reasons; agree explicit replacement/void/reissue/credit behaviour and guard ordinary financial edits before enabling issuance. |
 | D08 | Which email sender/provider should deliver invoices when the mail server is connected? | Plan explicit sending after recipient/subject/message review, with delivery history and retries; keep credentials outside the repository. |
 | D12 | Confirm the final invoice trigger and eligible stages. | Latest proposal: non-issuing draft preview, then explicit Generate after submission in In Progress/Complete. This refines the original automatic-on-Submit assumption. |
-| D13 | Should work deadlines appear on invoices? | Keep operational deadlines separate from payment due dates; if shown, snapshot their issue-time values. |
+| D13 | Should work deadlines appear on invoices? | Label them as work deadlines and snapshot their issue-time values if shown. Payment terms/due dates are deferred. |
 | D10 | Initial reporting basis resolved; any later financial reports need separate agreement. | Start with current Service Orders by order creation date, current assignee and payment/status filters, showing Total/Refunded/Net Order Value. Later refunds update earlier order-date report totals. Payment-date cash-flow and invoice-date reporting are deferred. |
 | D11 | What target date/time does an overnight request mean for the business? | Let the operator enter the agreed deadline and optional time; do not silently calculate one from the service name. |
 
@@ -726,6 +731,8 @@ requirements so planned features are not mistaken for delivered functionality.
 
 | Date | Decision/change |
 | --- | --- |
+| 15 November 2026 | Removed payment terms and calculated payment due dates from invoice settings and sample PDFs for now. Banking details, payment instructions and general terms/disclaimer remain. Migration 0016 removes only the payment-terms setting. |
+| 15 November 2026 | Implemented invoice step 1: General/Invoicing settings tabs, shared business name, validated PNG/JPEG logo upload, payment/content/branding settings and unsaved-value sample PDF preview/download in a modal. ReportLab produces short and multi-page A4 samples; previews do not persist settings/files or issue invoices. Migration 0015 preserves existing data. Actual order-linked issuance/history and email remain future work; see invoice-preview.md. |
 | 15 November 2026 | Simplified the planned reporting/refund workflow for a small business: Service Orders remain the main work/reporting record, with attached amount/date/reason refund entries, optional affected service, and Total/Refunded/Net Order Value columns. Start with order-date filters and current status/payment/assignee filters. Later refunds update earlier order-date totals. Invoice PDFs/history remain attached; separate cash-flow and accounting reporting are deferred. No refund/reporting functionality was implemented by this documentation change. |
 | 15 November 2026 | Recorded the next invoicing design in invoice-design.md: small Invoice record plus billing snapshots and stored PDF, actions on the order, proposed explicit Generate after submission and non-issuing draft preview, one A4 layout with configurable business content, fixed formatting, and email connection later. Updated the working plan to replace the earlier automatic-on-Submit assumption; trigger/stages, correction rules and deadline display remain explicit open decisions. No invoice functionality was implemented. |
 | 15 November 2026 | Made Order Notes editable in every order state, including Complete. Notes can be updated or cleared without reopening; item/service notes and other stage locks retain their existing rules. |

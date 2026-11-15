@@ -355,8 +355,8 @@ deactivation/deletion protection, contact links and directory pagination. See
 [QOL implementation](qol-improvements.md) for the exact queue definitions,
 behaviour, migration and verification details, and browser-tool setup.
 
-Invoice/PDF/email generation, full-payment records, finer permissions and change
-history, and financial dashboards/reports remain to be implemented. Currently,
+Order-linked invoice issuance/email, full-payment records, finer permissions and
+change history, and financial dashboards/reports remain to be implemented. Currently,
 saving or changing an order's status does not issue an invoice.
 
 The next milestone is [invoice design and delivery](invoice-design.md), captured
@@ -367,12 +367,21 @@ automatic-on-Submit assumption in the working plan. Confirm the final trigger
 and eligible stages before implementation. View/download/print and later email
 reuse the issued PDF.
 
-Start with business invoice settings and a sample A4 PDF. The handover specifies
+Business invoice settings and sample A4 PDFs are now implemented under System
+Settings > Invoicing. See [invoice preview](invoice-preview.md) for the fields,
+logo handling, unsaved-value modal preview, setup and verification. Migration
+0015 is applied locally and existing data was preserved. Short and multi-page
+samples were rendered and visually inspected. General settings and Demo Data
+remain under General; this milestone does not issue an invoice or allocate numbers.
+Payment terms and calculated payment due dates were subsequently removed for now;
+banking details, payment instructions and general terms/disclaimer remain available.
+
+The handover specifies
 configurable content versus fixed layout, internal-note exclusions, numbering and
 storage expectations, and a resume checklist. Agree how invoiced orders may be
 corrected/returned to Draft before implementing issuance. Connect email delivery
-later when the mail server is configured. These are planned changes; no invoicing
-code was implemented in this documentation update.
+later when the mail server is configured. Invoice records, order-linked previews,
+actual issuance, issued PDF history/storage and email are still planned.
 
 The latest reporting plan keeps Service Orders as the primary work/reporting
 record. Plan a Record refund action with amount, date, reason and optional affected

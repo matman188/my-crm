@@ -17,7 +17,7 @@
                 <a class="{% if current_url == 'home' %}active{% endif %}" href="{% url 'home' %}">Dashboard</a>
                 <a class="{% if current_url == 'customers' or current_url == 'create_customer' or current_url == 'edit_customer' %}active{% endif %}" href="{% url 'customers' %}">Customers</a>
                 {% if perms.crm.view_serviceorder %}
-                    <a class="{% if current_url == 'orders' or current_url == 'create_order' or current_url == 'edit_order' %}active{% endif %}" href="{% url 'orders' %}">Orders</a>
+                    <a class="{% if current_url == 'orders' or current_url == 'create_order' or current_url == 'edit_order' %}active{% endif %}" href="{% url 'orders' %}">Service Orders</a>
                 {% endif %}
                 {% if can_manage_configuration %}
                     <details class="nav-group" {% if current_url == 'product_categories' or current_url == 'create_product_category' or current_url == 'edit_product_category' or current_url == 'products' or current_url == 'create_product' or current_url == 'edit_product' or current_url == 'services' or current_url == 'create_service' or current_url == 'edit_service' or current_url == 'users' or current_url == 'create_user' or current_url == 'edit_user' or current_url == 'change_user_password' %}open{% endif %}>

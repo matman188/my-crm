@@ -16,7 +16,12 @@ pricing rules, setup instructions, and remaining milestones.
 The [QOL implementation notes](docs/qol-improvements.md) describe work queues,
 archiving, safer forms, order-entry shortcuts and browser-tool setup.
 
-Next milestone: [invoice design and delivery](docs/invoice-design.md), covering
+Available now: [invoice settings and sample PDF preview](docs/invoice-preview.md)
+under **System Settings > Invoicing**, including logo upload and previews using
+unsaved settings. All Python dependencies, including PDF inspection/rendering
+tools, are in `requirements.txt`. Run migrations after updating.
+
+Next milestone: order-linked [invoice design and delivery](docs/invoice-design.md), covering
 the proposed Invoice record, stored PDF, layout/configuration, order actions,
 open correction rules and a checklist for resuming development.
 

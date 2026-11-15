@@ -19,6 +19,27 @@ class SystemSettings(models.Model):
         choices=CURRENCY_CHOICES,
         default=CURRENCY_ZAR,
     )
+    INVOICE_ACCENTS = (
+        ("#2f6f86", "Teal"),
+        ("#243e59", "Navy"),
+        ("#2e644e", "Forest"),
+        ("#6d4575", "Plum"),
+        ("#465462", "Slate"),
+    )
+    invoice_logo = models.ImageField(upload_to="invoice_logos/", blank=True)
+    invoice_address = models.TextField(blank=True, max_length=600)
+    invoice_email = models.EmailField(blank=True)
+    invoice_phone = models.CharField(blank=True, max_length=50)
+    invoice_registration_number = models.CharField(blank=True, max_length=100)
+    invoice_tax_number = models.CharField(blank=True, max_length=100)
+    invoice_bank_details = models.TextField(blank=True, max_length=2000)
+    invoice_payment_instructions = models.TextField(blank=True, max_length=2000)
+    invoice_prefix = models.CharField(max_length=12, default="INV")
+    invoice_accent = models.CharField(
+        max_length=7, choices=INVOICE_ACCENTS, default="#2f6f86"
+    )
+    invoice_terms = models.TextField(blank=True, max_length=4000)
+    invoice_note = models.TextField(blank=True, max_length=2000)
 
     class Meta:
         verbose_name = "system settings"
