@@ -203,6 +203,18 @@ When you pull model changes from GitHub:
 - The CRM app automatically bootstraps its permission groups after migrations via a `post_migrate` signal.
 - Demo data should be loaded from the CRM System Settings screen when needed.
 
+## Demo Data
+
+Use **System Settings → Load demo data** for an industry-neutral sample catalog:
+standard items, special items, and item sets; basic services, customisation,
+assessment, express service, and delivery; and a mix of individual and business
+customers. Express service and delivery are global services, so they can also be
+added as order-wide extras. Sample prices are illustrative.
+
+Refreshing the original demo catalog renames its records in place, preserving
+order references and captured order prices. Demo usernames and the demo password
+are unchanged. Reloading still refreshes demo account details and passwords.
+
 ## What Else To Consider
 
 - If `db.sqlite3` was already committed earlier, remove it from git tracking once with `git rm --cached db.sqlite3` and commit that change.

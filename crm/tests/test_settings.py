@@ -1,10 +1,22 @@
+from datetime import date
+from decimal import Decimal
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
 from crm.authz import CRM_ADMIN_GROUP, CRM_USER_GROUP, SYSTEM_ADMIN_GROUP
-from crm.demo_data import DEMO_PASSWORD, DEMO_USERNAMES
-from crm.models import Customer, Product, ProductCategory, Service, SystemSettings
+from crm.demo_data import DEMO_PASSWORD, DEMO_USERNAMES, load_demo_data
+from crm.models import (
+    Customer,
+    OrderItem,
+    OrderServiceCharge,
+    Product,
+    ProductCategory,
+    Service,
+    ServiceOrder,
+    SystemSettings,
+)
 from crm.tests.helpers import create_admin_user
 
 
@@ -47,7 +59,9 @@ class SystemSettingsViewTests(TestCase):
         self.assertContains(response, 'href="/admin/"', html=False)
         self.assertContains(response, "Open Django Admin")
 
-    def test_logged_in_user_can_submit_system_settings_and_values_are_used_across_the_app(self):
+    def test_logged_in_user_can_submit_system_settings_and_values_are_used_across_the_app(
+        self,
+    ):
         user = create_admin_user()
         category = ProductCategory.objects.create(name="Networking")
         product = Product.objects.create(name="Router", category=category)
@@ -107,7 +121,9 @@ class SystemSettingsViewTests(TestCase):
         self.assertContains(response, "Demo data refreshed")
         self.assertContains(response, DEMO_PASSWORD)
 
-        self.assertEqual(ProductCategory.objects.filter(name__startswith="Demo ").count(), 3)
+        self.assertEqual(
+            ProductCategory.objects.filter(name__startswith="Demo ").count(), 3
+        )
         self.assertEqual(Product.objects.filter(name__startswith="Demo ").count(), 10)
         self.assertEqual(Service.objects.filter(name__startswith="Demo ").count(), 6)
         self.assertEqual(
@@ -115,14 +131,30 @@ class SystemSettingsViewTests(TestCase):
             5,
         )
         self.assertEqual(
-            Customer.objects.filter(email__endswith="@demo-customers.example.com").count(),
+            Customer.objects.filter(
+                email__endswith="@demo-customers.example.com"
+            ).count(),
             10,
         )
 
-        installation = Service.objects.get(name="Demo Installation and Setup")
-        self.assertEqual(installation.products.count(), 3)
+        basic_service = Service.objects.get(name="Demo Basic Service")
+        self.assertEqual(basic_service.products.count(), 3)
         self.assertTrue(
-            installation.products.filter(name="Demo Edge Router X1").exists()
+            basic_service.products.filter(name="Demo Standard Item").exists()
+        )
+        self.assertFalse(
+            Service.objects.get(name="Demo Express Service").products.exists()
+        )
+        self.assertFalse(Service.objects.get(name="Demo Delivery").products.exists())
+        self.assertTrue(
+            Customer.objects.filter(
+                email__endswith="@demo-customers.example.com", company=""
+            ).exists()
+        )
+        self.assertTrue(
+            Customer.objects.filter(email__endswith="@demo-customers.example.com")
+            .exclude(company="")
+            .exists()
         )
 
         system_admin = get_user_model().objects.get(username="demo.sysadmin")
@@ -137,25 +169,31 @@ class SystemSettingsViewTests(TestCase):
         self.assertTrue(standard_user.groups.filter(name=CRM_USER_GROUP).exists())
         self.assertTrue(standard_user.check_password(DEMO_PASSWORD))
 
-    def test_loading_demo_data_twice_refreshes_existing_demo_records_without_duplicates(self):
+    def test_loading_demo_data_twice_refreshes_existing_demo_records_without_duplicates(
+        self,
+    ):
         user = create_admin_user()
         self.client.force_login(user)
 
         self.client.post(reverse("system_settings"), {"action": "load_demo_data"})
 
-        product = Product.objects.get(name="Demo Edge Router X1")
+        product = Product.objects.get(name="Demo Standard Item")
         product.description = "Changed description"
         product.save(update_fields=["description"])
 
-        service = Service.objects.get(name="Demo Installation and Setup")
+        service = Service.objects.get(name="Demo Basic Service")
         service.products.clear()
+        express = Service.objects.get(name="Demo Express Service")
+        express.products.add(product)
 
         demo_user = get_user_model().objects.get(username="demo.agent.sam")
         demo_user.email = "changed@example.com"
         demo_user.save(update_fields=["email"])
 
-        customer = get_user_model().objects.get(username="demo.admin.sales").customers.get(
-            email="avery.mokoena@demo-customers.example.com"
+        customer = (
+            get_user_model()
+            .objects.get(username="demo.admin.sales")
+            .customers.get(email="avery.mokoena@demo-customers.example.com")
         )
         customer.notes = "Changed notes"
         customer.save(update_fields=["notes"])
@@ -169,7 +207,9 @@ class SystemSettingsViewTests(TestCase):
         )
 
         self.assertRedirects(response, reverse("system_settings"))
-        self.assertEqual(ProductCategory.objects.filter(name__startswith="Demo ").count(), 3)
+        self.assertEqual(
+            ProductCategory.objects.filter(name__startswith="Demo ").count(), 3
+        )
         self.assertEqual(Product.objects.filter(name__startswith="Demo ").count(), 10)
         self.assertEqual(Service.objects.filter(name__startswith="Demo ").count(), 6)
         self.assertEqual(
@@ -177,30 +217,74 @@ class SystemSettingsViewTests(TestCase):
             5,
         )
         self.assertEqual(
-            Customer.objects.filter(email__endswith="@demo-customers.example.com").count(),
+            Customer.objects.filter(
+                email__endswith="@demo-customers.example.com"
+            ).count(),
             10,
         )
 
         product.refresh_from_db()
         self.assertEqual(
             product.description,
-            "Branch-ready router with VPN and traffic shaping support.",
+            "A general-purpose item for a typical customer request.",
         )
 
         service.refresh_from_db()
         self.assertEqual(service.products.count(), 3)
+        self.assertFalse(express.products.exists())
 
         demo_user.refresh_from_db()
         self.assertEqual(demo_user.email, "demo.agent.sam@example.com")
         self.assertTrue(demo_user.check_password(DEMO_PASSWORD))
 
-        refreshed_customer = get_user_model().objects.get(username="demo.admin.sales").customers.get(
-            email="avery.mokoena@demo-customers.example.com"
+        refreshed_customer = (
+            get_user_model()
+            .objects.get(username="demo.admin.sales")
+            .customers.get(email="avery.mokoena@demo-customers.example.com")
         )
         self.assertEqual(
             refreshed_customer.notes,
-            "Interested in a full branch connectivity refresh.",
+            "Prefers email updates.",
         )
+
+    def test_original_demo_catalog_is_renamed_without_breaking_order_references(self):
+        category = ProductCategory.objects.create(name="Demo Infrastructure")
+        product = Product.objects.create(name="Demo Edge Router X1", category=category)
+        service = Service.objects.create(
+            name="Demo Installation and Setup", price="4500.00"
+        )
+        service.products.add(product)
+        customer = Customer.objects.create(
+            first_name="Existing customer", notes="Keep this note"
+        )
+        order = ServiceOrder.objects.create(customer=customer, currency="ZAR")
+        item = OrderItem.objects.create(
+            order=order, product=product, due_date=date(2026, 12, 1)
+        )
+        charge = OrderServiceCharge.objects.create(
+            order=order, item=item, service=service, quantity=2, unit_price="4500.00"
+        )
+
+        load_demo_data()
+
+        category.refresh_from_db()
+        product.refresh_from_db()
+        service.refresh_from_db()
+        item.refresh_from_db()
+        charge.refresh_from_db()
+        customer.refresh_from_db()
+        self.assertEqual(category.name, "Demo Standard Items")
+        self.assertEqual(product.name, "Demo Standard Item")
+        self.assertEqual(service.name, "Demo Basic Service")
+        self.assertEqual(service.price, Decimal("75.00"))
+        self.assertEqual(item.product_id, product.pk)
+        self.assertEqual(charge.service_id, service.pk)
+        self.assertEqual(charge.unit_price, Decimal("4500.00"))
+        self.assertEqual(order.total, Decimal("9000.00"))
+        self.assertEqual(customer.notes, "Keep this note")
+        self.assertEqual(Product.objects.filter(name__startswith="Demo ").count(), 10)
+        self.assertEqual(Service.objects.filter(name__startswith="Demo ").count(), 6)
+        self.assertFalse(Product.objects.filter(name="Demo Edge Router X1").exists())
 
     def test_non_admin_cannot_trigger_demo_data_load(self):
         user = get_user_model().objects.create_user(

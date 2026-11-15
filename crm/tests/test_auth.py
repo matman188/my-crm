@@ -1,7 +1,8 @@
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import Client, TestCase
 from django.urls import reverse
 
+from crm.models import SystemSettings
 from crm.tests.helpers import create_admin_user
 
 
@@ -15,6 +16,75 @@ class AuthenticationFlowTests(TestCase):
         response = self.client.get(reverse("login"))
 
         self.assertEqual(response.status_code, 200)
+
+    def test_login_page_uses_configured_company_name(self):
+        settings = SystemSettings.get_solo()
+        settings.company_name = "Studio & Co."
+        settings.save()
+
+        response = self.client.get(reverse("login"))
+
+        self.assertContains(response, "Studio &amp; Co.")
+        self.assertContains(response, 'autocomplete="username"')
+        self.assertContains(response, 'autocomplete="current-password"')
+
+    def test_login_accepts_csrf_protected_form_and_retains_next_destination(self):
+        user = get_user_model().objects.create_user(
+            username="sign_in_user", password="ExamplePass123!"
+        )
+        client = Client(enforce_csrf_checks=True)
+        response = client.get(reverse("login"), {"next": "/profile/"})
+        self.assertContains(response, 'name="next" value="/profile/"')
+
+        response = client.post(
+            reverse("login"),
+            {
+                "username": user.username,
+                "password": "ExamplePass123!",
+                "next": "/profile/",
+                "csrfmiddlewaretoken": client.cookies["csrftoken"].value,
+            },
+        )
+
+        self.assertRedirects(response, "/profile/")
+        self.assertEqual(client.session["_auth_user_id"], str(user.pk))
+
+    def test_invalid_login_preserves_username_but_not_password(self):
+        get_user_model().objects.create_user(
+            username="sign_in_user", password="ExamplePass123!"
+        )
+
+        response = self.client.post(
+            reverse("login"),
+            {
+                "username": "sign_in_user",
+                "password": "IncorrectPassword123!",
+                "next": "/profile/",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'role="alert"')
+        self.assertContains(response, 'value="sign_in_user"')
+        self.assertContains(response, 'name="next" value="/profile/"')
+        self.assertNotContains(response, "IncorrectPassword123!")
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_login_does_not_redirect_to_an_external_destination(self):
+        get_user_model().objects.create_user(
+            username="sign_in_user", password="ExamplePass123!"
+        )
+
+        response = self.client.post(
+            reverse("login"),
+            {
+                "username": "sign_in_user",
+                "password": "ExamplePass123!",
+                "next": "https://external.example.com/",
+            },
+        )
+
+        self.assertRedirects(response, "/")
 
     def test_home_hides_admin_navigation_for_non_admin_user(self):
         user = get_user_model().objects.create_user(

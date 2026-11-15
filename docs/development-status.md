@@ -1,6 +1,6 @@
 # Development Status
 
-Updated: 14 November 2026
+Updated: 15 November 2026
 
 The [scope of work](scope-of-work.md) describes the intended complete workflow.
 This file records what is implemented.
@@ -75,15 +75,38 @@ Apply the new migration after pulling this change:
 JavaScript must be enabled for adding items/services, customer filtering, and
 live totals. Forms and totals are validated again on the server when saving.
 
-Validation: 73 Django tests pass, including 23 order workflow/data-migration tests
-covering the simplified form, service-only quantities, and preservation of earlier
-draft totals and notes. Django's
+Order milestone validation: all 73 tests passed at completion, including 23 order
+workflow/data-migration tests covering the simplified form, service-only quantities,
+and preservation of earlier draft totals and notes. Django's
 system check, the new Python code's Ruff checks, and JavaScript syntax checks pass.
 Authenticated HTTP checks of the live Orders list and create form pass, and both
 the order JavaScript and stylesheet are served successfully. Initial form field
 IDs are unique and the deadline time is optional in the rendered form.
 Browser automation was unavailable during this implementation; visual and
 interactive browser acceptance remains to be checked.
+
+## Generic demo data
+
+The sample data now uses standard items, special items, and item sets rather than
+an IT-specific catalog. Services include basic/detailed work, customisation,
+assessment, and two global extras: express service and delivery. Customers include
+both individuals and businesses, with general contact and collection notes.
+
+Use **System Settings → Load demo data** to refresh it. Original demo categories,
+products, and services are renamed in place so existing order references and
+captured prices remain valid. Demo account usernames and credentials are unchanged.
+
+## Sign-in page
+
+The sign-in page now uses the app's navy/teal theme and configured company name,
+with a responsive layout, labelled fields, visible errors, password-manager
+autocomplete, and a Show/Hide password button. Standard Django authentication,
+CSRF protection, and safe return-to-page redirects are retained.
+
+All 9 authentication tests pass, including successful sign-in, rejected passwords,
+company branding, and redirect handling. The live sign-in flow and new stylesheet
+and JavaScript were checked successfully. The requested development password was
+set only in the local database; it is not applied automatically at startup.
 
 ## Subsequent milestones
 

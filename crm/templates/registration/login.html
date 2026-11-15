@@ -1,25 +1,65 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Sign in</title>
+    <title>Sign in · {{ company_name }}</title>
+    <link rel="stylesheet" href="{% static 'crm/css/app.css' %}">
+    <link rel="stylesheet" href="{% static 'crm/css/login.css' %}">
+    <script src="{% static 'crm/js/login.js' %}" defer></script>
 </head>
-<body>
-    <h1>Sign in</h1>
-
-    {% if form.errors %}
-        <p>Your username or password was not correct. Please try again.</p>
-    {% endif %}
-
-    {% if next %}
-        <p>Please sign in to continue.</p>
-    {% endif %}
-
-    <form method="post">
-        {% csrf_token %}
-        {{ form.as_p }}
-        <button type="submit">Log in</button>
-    </form>
+<body class="signin-page">
+    <main class="signin-shell">
+        <section class="signin-brand" aria-label="{{ company_name }} workspace">
+            <div class="signin-brand-name">
+                <span class="signin-mark" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="2" fill="currentColor"/><rect x="14" y="3" width="7" height="7" rx="2" fill="currentColor" opacity=".5"/><rect x="3" y="14" width="7" height="7" rx="2" fill="currentColor" opacity=".5"/><rect x="14" y="14" width="7" height="7" rx="2" fill="currentColor"/></svg>
+                </span>
+                <span>{{ company_name }}</span>
+            </div>
+            <div class="signin-intro">
+                <p class="signin-eyebrow">YOUR WORKSPACE</p>
+                <h2>Keep your work<br>in order.</h2>
+                <p>Customers, services, and orders.<br>All together, in one place.</p>
+            </div>
+            <div class="signin-highlights" aria-hidden="true">
+                <span>Customers</span><span>Services</span><span>Orders</span>
+            </div>
+        </section>
+        <section class="signin-panel" aria-labelledby="signin-heading">
+            <div class="signin-content">
+                <p class="signin-eyebrow">WELCOME BACK</p>
+                <h1 id="signin-heading">Sign in</h1>
+                <p class="signin-copy">Enter your account details to continue.</p>
+                <form method="post" action="{% url 'login' %}" class="signin-form">
+                    {% csrf_token %}
+                    {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+                    {% if form.non_field_errors %}
+                        <div class="signin-error" id="login-errors" role="alert">{{ form.non_field_errors }}</div>
+                    {% endif %}
+                    <div class="signin-field">
+                        <label for="id_username">Username</label>
+                        <input type="text" name="username" id="id_username" value="{{ form.username.value|default_if_none:'' }}"
+                            placeholder="Your username" autocomplete="username" autocapitalize="none" spellcheck="false"
+                            maxlength="{{ form.username.field.max_length|default:150 }}" required autofocus
+                            {% if form.username.errors or form.non_field_errors %}aria-invalid="true" aria-describedby="{% if form.username.errors %}username-errors {% endif %}{% if form.non_field_errors %}login-errors{% endif %}"{% endif %}>
+                        {% if form.username.errors %}<div class="signin-field-error" id="username-errors">{{ form.username.errors }}</div>{% endif %}
+                    </div>
+                    <div class="signin-field">
+                        <label for="id_password">Password</label>
+                        <div class="signin-password">
+                            <input type="password" name="password" id="id_password" placeholder="Your password" autocomplete="current-password" required
+                                {% if form.password.errors or form.non_field_errors %}aria-invalid="true" aria-describedby="{% if form.password.errors %}password-errors {% endif %}{% if form.non_field_errors %}login-errors{% endif %}"{% endif %}>
+                            <button type="button" class="signin-password-toggle" aria-label="Show password" aria-controls="id_password" aria-pressed="false" data-password-toggle hidden>Show</button>
+                        </div>
+                        {% if form.password.errors %}<div class="signin-field-error" id="password-errors">{{ form.password.errors }}</div>{% endif %}
+                    </div>
+                    <button class="button signin-submit" type="submit">Sign in <span aria-hidden="true">&rarr;</span></button>
+                </form>
+                <p class="signin-help">Need access? Contact your administrator.</p>
+            </div>
+        </section>
+    </main>
 </body>
 </html>

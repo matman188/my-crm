@@ -11,132 +11,143 @@ from crm.authz import (
 )
 from crm.models import Customer, Product, ProductCategory, Service
 
-
 DEMO_PASSWORD = "DemoPass123!"
 
 DEMO_CATEGORIES = (
     {
-        "name": "Demo Infrastructure",
-        "description": "Core networking and resilience products used in the sample account set.",
+        "name": "Demo Standard Items",
+        "previous_name": "Demo Infrastructure",
+        "description": "Everyday items used to demonstrate a general service workflow.",
     },
     {
-        "name": "Demo Productivity",
-        "description": "Collaboration and workflow tools included in the demo catalog.",
+        "name": "Demo Special Items",
+        "previous_name": "Demo Productivity",
+        "description": "Items that may need a specialist or customised service.",
     },
     {
-        "name": "Demo Security",
-        "description": "Security-focused software and services for the sample environment.",
+        "name": "Demo Item Sets",
+        "previous_name": "Demo Security",
+        "description": "Sets of items that can be handled together on an order.",
     },
 )
 
 DEMO_PRODUCTS = (
     {
-        "name": "Demo Edge Router X1",
-        "category": "Demo Infrastructure",
-        "description": "Branch-ready router with VPN and traffic shaping support.",
+        "name": "Demo Standard Item",
+        "previous_name": "Demo Edge Router X1",
+        "category": "Demo Standard Items",
+        "description": "A general-purpose item for a typical customer request.",
     },
     {
-        "name": "Demo Managed Switch 24",
-        "category": "Demo Infrastructure",
-        "description": "24-port managed switch for growing office networks.",
+        "name": "Demo Small Item",
+        "previous_name": "Demo Managed Switch 24",
+        "category": "Demo Standard Items",
+        "description": "A smaller item that can receive one or more services.",
     },
     {
-        "name": "Demo Wi-Fi Access Point Pro",
-        "category": "Demo Infrastructure",
-        "description": "Ceiling-mounted wireless access point for dense office coverage.",
+        "name": "Demo Large Item",
+        "previous_name": "Demo Wi-Fi Access Point Pro",
+        "category": "Demo Standard Items",
+        "description": "A larger item used to demonstrate a separate order line.",
     },
     {
-        "name": "Demo Backup Appliance Mini",
-        "category": "Demo Infrastructure",
-        "description": "Compact backup appliance for daily endpoint and server snapshots.",
+        "name": "Demo Accessory",
+        "previous_name": "Demo Backup Appliance Mini",
+        "category": "Demo Standard Items",
+        "description": "An accessory that can be assessed or serviced separately.",
     },
     {
-        "name": "Demo Cloud Desk Suite",
-        "category": "Demo Productivity",
-        "description": "Shared document, chat, and planning workspace for distributed teams.",
+        "name": "Demo Premium Item",
+        "previous_name": "Demo Cloud Desk Suite",
+        "category": "Demo Special Items",
+        "description": "An item that may require additional care or customisation.",
     },
     {
-        "name": "Demo Team Mail Plus",
-        "category": "Demo Productivity",
-        "description": "Business email and calendar package for small teams.",
+        "name": "Demo Custom Item",
+        "previous_name": "Demo Team Mail Plus",
+        "category": "Demo Special Items",
+        "description": "An item with customer-specific instructions.",
     },
     {
-        "name": "Demo CRM Insights Add-on",
-        "category": "Demo Productivity",
-        "description": "Reporting extension that surfaces deal and service trends.",
+        "name": "Demo Replacement Part",
+        "previous_name": "Demo CRM Insights Add-on",
+        "category": "Demo Special Items",
+        "description": "A part that can be adjusted or prepared as part of a service.",
     },
     {
-        "name": "Demo Endpoint Shield",
-        "category": "Demo Security",
-        "description": "Endpoint protection package with device health monitoring.",
+        "name": "Demo Small Set",
+        "previous_name": "Demo Endpoint Shield",
+        "category": "Demo Item Sets",
+        "description": "A small set of related customer items.",
     },
     {
-        "name": "Demo Secure Gateway",
-        "category": "Demo Security",
-        "description": "Secure web gateway for traffic inspection and policy control.",
+        "name": "Demo Standard Set",
+        "previous_name": "Demo Secure Gateway",
+        "category": "Demo Item Sets",
+        "description": "A set of related items handled as one catalog entry.",
     },
     {
-        "name": "Demo Identity Vault",
-        "category": "Demo Security",
-        "description": "Identity and password management service for internal teams.",
+        "name": "Demo Large Set",
+        "previous_name": "Demo Identity Vault",
+        "category": "Demo Item Sets",
+        "description": "A larger set for demonstrating an order with several services.",
     },
 )
 
 DEMO_SERVICES = (
     {
-        "name": "Demo Installation and Setup",
-        "description": "Deployment and initial configuration for onsite hardware rollouts.",
-        "price": Decimal("4500.00"),
+        "name": "Demo Basic Service",
+        "previous_name": "Demo Installation and Setup",
+        "description": "A standard service for everyday items.",
+        "price": Decimal("75.00"),
         "products": (
-            "Demo Edge Router X1",
-            "Demo Managed Switch 24",
-            "Demo Wi-Fi Access Point Pro",
+            "Demo Standard Item",
+            "Demo Small Item",
+            "Demo Large Item",
         ),
     },
     {
-        "name": "Demo Network Health Check",
-        "description": "Quarterly network review with performance and risk recommendations.",
-        "price": Decimal("2200.00"),
+        "name": "Demo Detailed Service",
+        "previous_name": "Demo Network Health Check",
+        "description": "Additional work for items that need more time and attention.",
+        "price": Decimal("150.00"),
         "products": (
-            "Demo Edge Router X1",
-            "Demo Managed Switch 24",
-            "Demo Secure Gateway",
+            "Demo Standard Item",
+            "Demo Small Item",
+            "Demo Standard Set",
         ),
     },
     {
-        "name": "Demo Migration Workshop",
-        "description": "Planning and enablement session for cloud productivity deployments.",
-        "price": Decimal("3200.00"),
+        "name": "Demo Customisation",
+        "previous_name": "Demo Migration Workshop",
+        "description": "Changes made to suit the customer's instructions.",
+        "price": Decimal("100.00"),
         "products": (
-            "Demo Cloud Desk Suite",
-            "Demo Team Mail Plus",
-            "Demo CRM Insights Add-on",
+            "Demo Premium Item",
+            "Demo Custom Item",
+            "Demo Replacement Part",
         ),
     },
     {
-        "name": "Demo Managed Backup Review",
-        "description": "Backup validation and retention tuning for the demo appliance stack.",
-        "price": Decimal("1800.00"),
-        "products": ("Demo Backup Appliance Mini",),
+        "name": "Demo Assessment",
+        "previous_name": "Demo Managed Backup Review",
+        "description": "Inspect an item and record the work required.",
+        "price": Decimal("50.00"),
+        "products": ("Demo Accessory",),
     },
     {
-        "name": "Demo Endpoint Rollout",
-        "description": "Device onboarding and policy setup for endpoint protection.",
-        "price": Decimal("2750.00"),
-        "products": (
-            "Demo Endpoint Shield",
-            "Demo Identity Vault",
-        ),
+        "name": "Demo Express Service",
+        "previous_name": "Demo Endpoint Rollout",
+        "description": "An optional priority service for any item or the whole order.",
+        "price": Decimal("80.00"),
+        "products": (),
     },
     {
-        "name": "Demo Security Audit",
-        "description": "Configuration review across security products with remediation guidance.",
-        "price": Decimal("3900.00"),
-        "products": (
-            "Demo Secure Gateway",
-            "Demo Endpoint Shield",
-            "Demo Identity Vault",
-        ),
+        "name": "Demo Delivery",
+        "previous_name": "Demo Security Audit",
+        "description": "An optional delivery charge that can be added to any order.",
+        "price": Decimal("40.00"),
+        "products": (),
     },
 )
 
@@ -185,8 +196,8 @@ DEMO_CUSTOMERS = (
         "email": "avery.mokoena@demo-customers.example.com",
         "primary_phone": "+27 11 555 0101",
         "secondary_phone": "",
-        "company": "Mokoena Retail Group",
-        "notes": "Interested in a full branch connectivity refresh.",
+        "company": "",
+        "notes": "Prefers email updates.",
         "owner": "demo.admin.sales",
     },
     {
@@ -195,8 +206,8 @@ DEMO_CUSTOMERS = (
         "email": "naledi.dlamini@demo-customers.example.com",
         "primary_phone": "+27 11 555 0102",
         "secondary_phone": "",
-        "company": "Dlamini Logistics",
-        "notes": "Needs better warehouse Wi-Fi coverage and reporting.",
+        "company": "Demo Trading Co.",
+        "notes": "Contact by phone before collection.",
         "owner": "demo.admin.ops",
     },
     {
@@ -205,8 +216,8 @@ DEMO_CUSTOMERS = (
         "email": "chris.peters@demo-customers.example.com",
         "primary_phone": "+27 11 555 0103",
         "secondary_phone": "",
-        "company": "Peters & Co Architects",
-        "notes": "Evaluating shared productivity tools for hybrid staff.",
+        "company": "",
+        "notes": "Requested an estimate before work starts.",
         "owner": "demo.agent.lindi",
     },
     {
@@ -215,8 +226,8 @@ DEMO_CUSTOMERS = (
         "email": "tumi.khumalo@demo-customers.example.com",
         "primary_phone": "+27 11 555 0104",
         "secondary_phone": "",
-        "company": "Khumalo Legal Advisory",
-        "notes": "Requested an identity and endpoint security proposal.",
+        "company": "",
+        "notes": "Prefers afternoon collection.",
         "owner": "demo.agent.sam",
     },
     {
@@ -225,8 +236,8 @@ DEMO_CUSTOMERS = (
         "email": "rhea.govender@demo-customers.example.com",
         "primary_phone": "+27 11 555 0105",
         "secondary_phone": "",
-        "company": "Govender Foods",
-        "notes": "Looking to centralize backups across two locations.",
+        "company": "Demo Supplies",
+        "notes": "Send the invoice by email.",
         "owner": "demo.admin.sales",
     },
     {
@@ -235,8 +246,8 @@ DEMO_CUSTOMERS = (
         "email": "imran.jacobs@demo-customers.example.com",
         "primary_phone": "+27 11 555 0106",
         "secondary_phone": "",
-        "company": "Jacobs Engineering",
-        "notes": "Needs a phased network health-check engagement.",
+        "company": "Demo Workshop",
+        "notes": "Check availability before scheduling.",
         "owner": "demo.admin.ops",
     },
     {
@@ -245,8 +256,8 @@ DEMO_CUSTOMERS = (
         "email": "lebo.sithole@demo-customers.example.com",
         "primary_phone": "+27 11 555 0107",
         "secondary_phone": "",
-        "company": "Sithole Clinics",
-        "notes": "Interested in secure mail and collaboration tools.",
+        "company": "Demo Studio",
+        "notes": "Returning customer.",
         "owner": "demo.agent.lindi",
     },
     {
@@ -255,8 +266,8 @@ DEMO_CUSTOMERS = (
         "email": "megan.botha@demo-customers.example.com",
         "primary_phone": "+27 11 555 0108",
         "secondary_phone": "",
-        "company": "Botha Property Partners",
-        "notes": "Requested a quick-start bundle for new branch openings.",
+        "company": "",
+        "notes": "Confirm the deadline before starting.",
         "owner": "demo.agent.sam",
     },
     {
@@ -265,8 +276,8 @@ DEMO_CUSTOMERS = (
         "email": "sipho.nkosi@demo-customers.example.com",
         "primary_phone": "+27 11 555 0109",
         "secondary_phone": "",
-        "company": "Nkosi Field Services",
-        "notes": "Wants secure remote access and better device visibility.",
+        "company": "Demo Services",
+        "notes": "Requires an itemised invoice.",
         "owner": "demo.admin.sales",
     },
     {
@@ -275,8 +286,8 @@ DEMO_CUSTOMERS = (
         "email": "paula.fernandes@demo-customers.example.com",
         "primary_phone": "+27 11 555 0110",
         "secondary_phone": "",
-        "company": "Fernandes Consulting",
-        "notes": "Asked for a bundled proposal that includes onboarding services.",
+        "company": "Demo Partners",
+        "notes": "Contact when the order is ready.",
         "owner": "demo.sysadmin",
     },
 )
@@ -284,12 +295,24 @@ DEMO_CUSTOMERS = (
 DEMO_USERNAMES = tuple(user["username"] for user in DEMO_USERS)
 
 
+def _refresh_demo_catalog_entry(model, data, defaults):
+    # Reuse original demo records so orders retain their product/service links.
+    if not model.objects.filter(name=data["name"]).exists():
+        previous = model.objects.filter(name=data["previous_name"]).first()
+        if previous:
+            previous.name = data["name"]
+            previous.save(update_fields=["name"])
+    record, _ = model.objects.update_or_create(name=data["name"], defaults=defaults)
+    return record
+
+
 @transaction.atomic
 def load_demo_data():
     category_map = {}
     for category_data in DEMO_CATEGORIES:
-        category, _ = ProductCategory.objects.update_or_create(
-            name=category_data["name"],
+        category = _refresh_demo_catalog_entry(
+            ProductCategory,
+            category_data,
             defaults={
                 "description": category_data["description"],
             },
@@ -298,8 +321,9 @@ def load_demo_data():
 
     product_map = {}
     for product_data in DEMO_PRODUCTS:
-        product, _ = Product.objects.update_or_create(
-            name=product_data["name"],
+        product = _refresh_demo_catalog_entry(
+            Product,
+            product_data,
             defaults={
                 "category": category_map[product_data["category"]],
                 "description": product_data["description"],
@@ -308,14 +332,17 @@ def load_demo_data():
         product_map[product.name] = product
 
     for service_data in DEMO_SERVICES:
-        service, _ = Service.objects.update_or_create(
-            name=service_data["name"],
+        service = _refresh_demo_catalog_entry(
+            Service,
+            service_data,
             defaults={
                 "description": service_data["description"],
                 "price": service_data["price"],
             },
         )
-        service.products.set([product_map[product_name] for product_name in service_data["products"]])
+        service.products.set(
+            [product_map[product_name] for product_name in service_data["products"]]
+        )
 
     user_map = {}
     user_model = get_user_model()
