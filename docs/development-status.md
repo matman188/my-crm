@@ -373,3 +373,16 @@ storage expectations, and a resume checklist. Agree how invoiced orders may be
 corrected/returned to Draft before implementing issuance. Connect email delivery
 later when the mail server is configured. These are planned changes; no invoicing
 code was implemented in this documentation update.
+
+The latest reporting plan keeps Service Orders as the primary work/reporting
+record. Plan a Record refund action with amount, date, reason and optional affected
+item/service, plus Total Refunded and Net Order Value (Order Total minus refunds).
+The initial report uses one row per order, order-date range, status/payment/assignee
+filters and totals/CSV. Later refunds update the older order's net value and its
+earlier order-date report when rerun. These are live order-value totals; separate
+cash-flow/accounting reports are deferred. See
+[the simple refund/reporting plan](invoice-design.md#simple-refunds-and-reporting-directly-on-orders)
+and [scope section 7.2](scope-of-work.md#72-searchable-order-report). Refund entries,
+refund/net columns and the new report are not implemented yet; today's payment
+statuses remain manual indicators. Invoice correction and refund validation rules
+still require agreement before those actions are built.

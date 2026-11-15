@@ -8,6 +8,12 @@ This records the latest proposed approach discussed with the owner. Use it with
 settings and a sample PDF, then implement issuance and storage. Connect email
 delivery after the mail server is configured.
 
+Latest refinement, 15 November 2026: keep the Service Order as the primary work
+and reporting record. See the simple refund/reporting plan below and
+[scope section 7.2](scope-of-work.md#72-searchable-order-report). Separate payment
+ledgers, cash-flow reports and accounting screens are not prerequisites for the
+initial order-based report.
+
 ## Recommended approach
 
 Keep invoice actions on the service-order screen, backed by a small Invoice
@@ -125,9 +131,48 @@ credit and already-paid-order rules remain open (scope D07).
 Operational deadlines, assignment, collection and internal notes can continue to
 follow their existing order-stage rules without rewriting the issued document.
 Order Notes remain editable in every state. Current Paid/Unpaid/Refunded fields
-remain manual indicators until the separate payment-record milestone; they must
+remain manual indicators pending the agreed refund/payment rules; they must
 not silently alter an issued PDF. Order cancellation must retain invoice history;
 its financial treatment and any refund handling need explicit agreement.
+
+## Simple refunds and reporting directly on orders
+
+Planned for later implementation: the operator reports directly on Service
+Orders and handles refunds on the same screen. Invoice versions and PDF history
+stay attached supporting records. Keep one order for the piece of work; do not
+require a separate accounting screen or manually maintained reporting table.
+
+- Add Record refund with amount, date, reason and optional affected item/service.
+  Retain each refund entry, including multiple refunds against the same order.
+- Retain Order Total as the sum of original/current service charges. A refund
+  does not reprice or delete those charges or rewrite an issued PDF.
+- Show Total Refunded as the sum of the attached refunds and Net Order Value as
+  Order Total minus Total Refunded: R500 total, R100 refunded, R400 net value.
+- Report one row per order: Order, Customer, Order Date, Assigned To, Status,
+  Payment Status, Currency, Total, Refunded and Net Order Value. Provide filtered
+  totals and CSV export, grouping different currencies separately.
+- Initially filter on order creation date in the business timezone, with text,
+  status, payment-status and assignee filters. Paid work can be selected using
+  the payment-status filter. No payment ledger is needed for this order-value view.
+- Use current order values and all attached refunds. A refund against an older
+  order updates its net value and the earlier period's totals when rerun, even if
+  the refund happened outside that order-date period. Make that behaviour clear.
+- Label this Net Order Value. It does not establish how much cash was actually
+  received during the period. Defer separate cash-flow and accounting reports.
+
+Refund recording does not itself transfer money. Refund alone need not reopen
+the order. Agree refund permissions, positive amounts, duplicate/stale protection,
+maximum refundable amount and validation against money received before building
+the action. Partially Refunded/Refunded summary rules should use the entries;
+the exact transition from today's manual payment statuses remains to be agreed.
+Partial refunds do not imply accepting deposits or partial initial payments.
+
+The simple reporting approach supersedes the earlier suggestion to make separate
+payment-date/invoice-date reporting the initial focus. It does not remove the
+need to preserve invoice versions or settle D07 before editing issued billing
+details. Credit-note/payment records can be introduced where required by the
+agreed invoice-correction rules, without turning the initial order report into
+an accounting module.
 
 ## Email delivery later
 
@@ -153,9 +198,14 @@ Keep credentials outside source control and ordinary business settings.
    survive changes to customers, catalogue, settings, notes and operational dates.
 6. Add the email review/delivery history flow, connecting actual sending when the
    mail server is configured (D08).
+7. Add simple refund entries and the order-based report above: refund capture,
+   derived refund/net totals, order-date filters, status/payment/assignee filters
+   and CSV export. Confirm refund validation and payment-summary rules first.
 
 No invoice models, migrations, settings, generation, preview, PDF storage or email
 delivery were implemented as part of this documentation update.
+Refund recording, net-order totals and the order-based report are also planned,
+not implemented by this update.
 
 ## Technical references
 

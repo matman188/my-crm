@@ -59,6 +59,8 @@ customer's physical items; its invoice is a separate billing record.
 | Completion | A user must be set in Assigned To before the order can be marked Complete. |
 | Invoice trigger | Latest proposal: explicit Generate invoice after submission, with a non-issuing draft preview. This refines the earlier automatic-on-Submit assumption; confirm the final trigger and eligible stages before implementation (section 6). |
 | Invoice delivery | The invoice can be printed or emailed to the customer. |
+| Order-based reporting | Keep the Service Order as the primary work and reporting record. Plan one row per order with Total, Refunded and Net Order Value; order date is the initial reporting date basis, with status/payment/assignee filters. Separate cash-flow/accounting reports are deferred. |
+| Simple refunds | Plan a Record refund action directly on the order: amount, date, reason and optional affected item/service. Retain each entry, aggregate Total Refunded, and calculate Net Order Value = Order Total - Total Refunded. A refund does not rewrite the original charge or issued PDF. |
 
 The detailed defaults and controls proposed below remain recommendations unless
 explicitly identified as confirmed. Open decisions are listed in section 13.
@@ -341,6 +343,11 @@ operation is implemented; cancellation must not silently erase financial records
 
 ### 5.6 Full-payment recording
 
+This remains later work. Full-payment recording and separate cash-flow reporting
+are not prerequisites for the initial order-based report in section 7.2. That
+report uses order values, attached refund entries and the current payment-status
+filter; it must not claim to be a statement of cash received in a period.
+
 - Allow an authorized user to record the full outstanding invoice amount, payment
   date/time, payment method, reference, and recording user.
 - Derive paid/unpaid from the recorded financial information. Reject accidental
@@ -350,8 +357,43 @@ operation is implemented; cancellation must not silently erase financial records
 - Payment recording is manual in the first version. Online card payments, bank
   feeds, automatic bank reconciliation, deposits, and partial payments are excluded.
 - Corrections to an incorrectly recorded payment require an authorized action,
-  reason, and history rather than silent deletion. Refund transaction handling
-  remains an open decision, separate from the manual Refunded status indicator.
+  reason, and history rather than silent deletion. Simple order refund capture
+  is planned in section 5.7; its validation and payment-summary rules need agreement.
+
+### 5.7 Simple refund entries and order totals
+
+Planned, not implemented: expose Record refund on the Service Order. Capture the
+amount, date, reason, and optionally the affected order item/service occurrence.
+Keep multiple refund entries attached to the same order so a later refund does
+not overwrite an earlier one. Keep the user workflow on the order, without a
+separate refund-management or accounting screen.
+
+Show these separate order values:
+
+| Value | Calculation/example |
+| --- | --- |
+| Order Total | Existing sum of service charges; R500 |
+| Total Refunded | Sum of recorded refund entries; R100 |
+| Net Order Value | Order Total minus Total Refunded; R400 |
+
+Recording a refund leaves the original service charges, quantities and invoice
+PDF intact. A refund alone does not require reopening the work order. Changes to
+commercial details through a separate agreed revision can change the order total;
+refunds are not implemented by deleting/repricing the original services.
+
+The action records a refund made by the business; it does not initiate a bank or
+card transfer. Retain date/reason and the optional affected service for reference.
+Confirm permissions, positive-amount validation, duplicate/stale-submit handling,
+and the maximum refundable amount before implementation. Confirm how to validate
+money actually received while payment status remains manual. The proposed
+Partially Refunded/Refunded summary should reflect recorded refunds; exact payment
+status/amount rules remain open, rather than adding a status with no refund entry.
+Partial refunds can coexist with the existing full-payment-only scope.
+
+Preserve issued invoices and their history; any required invoice adjustment or
+credit-note behaviour remains part of the open correction decision D07. Do not
+make a full accounting module or separate cash-flow report a prerequisite for
+the simple order report.
 
 ## 6. Invoices, PDF layout, and email
 
@@ -456,7 +498,8 @@ Provide summary counts/totals and lists that link to filtered order views:
 - Collected and uncollected orders, using the single order checkbox.
 - Unpaid invoices/orders, their outstanding value, and overdue payments when
   payment due dates are configured.
-- Payments received in a selected period and workload by assigned user.
+- Workload by assigned user and order Total/Refunded/Net Order Value for the
+  selected order-date period. Payments-received cash-flow metrics are deferred.
 
 Dashboard categories can overlap. For example, an order can be Complete, Unpaid,
 and not Collected at the same time. Complete orders must remain visible in the
@@ -465,29 +508,44 @@ whole-order values rather than item progress.
 
 ### 7.2 Searchable order report
 
-Start with a sortable, paginated table and filters rather than a custom report
-builder. Use one row per order, with a link to item/service detail.
+The Service Order is the main work and reporting record. Keep the small-business
+workflow simple: a sortable, paginated table, one row per order, linked to its
+items/services, refunds and invoice history. A separate accounting/report-builder
+module is not required for this first report.
 
-Suggested columns: order reference, invoice number, customer, created date,
-confirmed date, earliest deadline, Assigned To, Status, Collected, Payment status,
-invoice amount/currency, paid amount, outstanding amount, payment
-date/method/reference, and order completion date.
+Initial columns: Order, Customer, Order Date, Assigned To, Status, Payment Status,
+Currency, Order Total, Total Refunded and Net Order Value. Show totals for the
+filtered result and allow CSV export. Additional operational columns such as
+Collected and deadlines can remain available where useful.
 
-Suggested filters: text search, date range and date basis, assigned user including
-unassigned, order status, Collected, Payment status, overdue active orders, and
-product/service. Provide totals for the filtered result and CSV export.
+Use the order creation date as the initial date basis, interpreted in the
+business timezone. Filter by text, order-date range, status, payment status and
+assigned user including unassigned. Payment-status filters let the user select
+paid work; status filters can include/exclude Draft and Cancelled explicitly.
+Use the current assignee for the initial worker report.
 
-Use related order, item, service, invoice, and payment records as the source of
-truth. The report table is a view of those records, rather than a second manually
-maintained sales table. Avoid counting an order's total repeatedly when it has
-multiple items or services.
+Calculate Order Total from the existing service charges, Total Refunded from all
+refunds attached to each selected order, and Net Order Value as the difference.
+For example, an R500 order with R100 refunded reports R500 Total, R100 Refunded,
+and R400 Net Order Value. Do not reduce the stored/original charge values or sum
+multiple invoice versions as additional order sales. Invoice PDFs/history remain
+attached supporting records, rather than requiring separate invoice reporting.
+Avoid duplicating an order's totals when it has multiple services or refunds.
+Never combine currencies into one unlabeled monetary total.
 
-Distinguish payments received (by payment date) from invoiced sales (by invoice
-date). Label the date basis and treatment of cancelled/void records clearly. Do
-not treat unpaid invoices as cash received or label sales as profit. Reporting by
-worker should identify current assignment; attribution to the worker at payment
-or completion time needs a separate business decision. Never sum different
-currencies into one unlabeled monetary total.
+These are live order-value reports, not historical cash statements. A refund made
+later against an older order changes that order's current Net Order Value and the
+totals when rerunning its earlier order-date period. Include its attached refunds
+even when their refund dates fall outside the selected order-date period. State
+this behaviour clearly on the report. Label the result Net Order Value; it is not
+automatically cash received or profit, and unpaid work can be included unless
+filtered out.
+
+Separate payment-date/refund-date cash-flow reports and invoice-date sales
+reports are deferred. The initial report does not depend on building a payment
+ledger or credit-note/accounting screens first. This simplifies the earlier
+reporting proposal; keep financial-history/correction decisions explicit when
+implementing issued invoices.
 
 ## 8. Access, history, and reliability
 
@@ -523,6 +581,7 @@ These are planning concepts, not a final database schema:
 | OrderServiceCharge | One selected service occurrence, item-or-order scope, charge quantity, captured price, and optional internal text note; repeated occurrences are allowed |
 | Invoice / InvoiceLine | Linked order, issued identity, actor, financial/business/customer snapshots, template version, stored PDF reference and agreed correction relationships |
 | Payment | Full settlement amount, date, method, reference, and correction history |
+| OrderRefund | Planned small entry attached to a Service Order: amount, date, reason and optional affected item/service; aggregate totals on the order and its report |
 | OrderEvent | Who changed an operational state, when, and why |
 | InvoiceEmailAttempt | Recipient, send result, timestamp, and retry history |
 | Business settings | Existing settings extended for invoices, banking, timezone, and payment terms |
@@ -539,9 +598,11 @@ These are planning concepts, not a final database schema:
    settings and an approved sample A4 PDF. Then add invoice/line snapshots, unique
    numbering, stored PDF, explicit generation and preview/view/download/print.
    Add email review/history and connect delivery when the mail server is configured.
-4. **Settlement:** full-payment recording and corrections behind Payment status,
-   cancellation rules, and financial history. No separate closure workflow.
-5. **Visibility and release:** dashboard, filtered reports/CSV, workflow tests,
+4. **Order refunds and reporting:** simple refund capture on the order, Total
+   Refunded/Net Order Value, order-date filters and one-row-per-order totals/CSV.
+   Separate full-payment records and cash-flow/accounting reports can follow later;
+   issued-invoice correction/cancellation rules must still be agreed.
+5. **Visibility and release:** dashboard, order-based reports/CSV, workflow tests,
    backup/restore checks, and end-to-end business acceptance.
 
 These phases are a suggested implementation order, not a time or cost estimate.
@@ -563,15 +624,19 @@ These phases are a suggested implementation order, not a time or cost estimate.
    be emailed. A failed email can be retried without another invoice being issued.
 7. An authorized user marks the whole order Complete without updating individual
    item progress. It remains visible as uncollected and/or unpaid where appropriate.
-8. Full payment records the expected amount and reference. Partial or duplicate
+8. In the later payment-record milestone, full payment records the expected amount
+   and reference. Partial or duplicate
    settlement is rejected. Payment status becomes Paid without changing Status
    or Collected automatically.
 9. The order has exactly four work statuses: Draft, In Progress, Complete, Cancelled.
    Changing Status or the Collected checkbox preserves the other fields; authorized
    changes are recorded. No item status or separate Closed state is needed.
-10. A supervisor filters orders by worker, deadline, status, and date range. Cash
-    totals reflect actual payments in the selected period and do not double-count
-    orders that have several services.
+10. A supervisor reports directly on Service Orders using order-date range and
+    status/payment/assignee filters. Total, Refunded and Net Order Value aggregate
+    once per order, including orders with several services or refunds. An R500
+    order with R100 refunded shows R400 net. A later refund against an older order
+    updates the earlier period when rerun; the report clearly explains this and
+    labels its totals as order values, rather than period cash received.
 11. A worker cannot perform supervisor or financial actions by directly requesting
     a restricted URL. Unassigned and overdue orders remain easy to identify.
 12. Product setup determines whether an order item represents a shoe, pair, or
@@ -627,8 +692,10 @@ These phases are a suggested implementation order, not a time or cost estimate.
   Closed status or closure workflow.
 - Arbitrary invoice layout builders, advanced report builders, and currency conversion.
 
-Refunds, credit notes, discounts, and correction of issued financial documents
-need an explicit decision; they are not assumed to be included automatically.
+Simple order refund entries and order-based net-value reporting are planned in
+sections 5.7 and 7.2. Separate cash-flow/accounting reports remain deferred.
+Credit-note documents, discounts and the exact correction/replacement rules for
+issued invoices still need explicit agreement before implementation.
 
 ## 13. Open decisions and suggestions
 
@@ -648,7 +715,7 @@ collection tracking.
 | D08 | Which email sender/provider should deliver invoices when the mail server is connected? | Plan explicit sending after recipient/subject/message review, with delivery history and retries; keep credentials outside the repository. |
 | D12 | Confirm the final invoice trigger and eligible stages. | Latest proposal: non-issuing draft preview, then explicit Generate after submission in In Progress/Complete. This refines the original automatic-on-Submit assumption. |
 | D13 | Should work deadlines appear on invoices? | Keep operational deadlines separate from payment due dates; if shown, snapshot their issue-time values. |
-| D10 | What dates and worker attribution should financial reports use? | Separate invoice-date sales and payment-date receipts; current worker for workload, with historical attribution agreed separately. |
+| D10 | Initial reporting basis resolved; any later financial reports need separate agreement. | Start with current Service Orders by order creation date, current assignee and payment/status filters, showing Total/Refunded/Net Order Value. Later refunds update earlier order-date report totals. Payment-date cash-flow and invoice-date reporting are deferred. |
 | D11 | What target date/time does an overnight request mean for the business? | Let the operator enter the agreed deadline and optional time; do not silently calculate one from the service name. |
 
 ## 14. Maintaining this scope
@@ -659,6 +726,7 @@ requirements so planned features are not mistaken for delivered functionality.
 
 | Date | Decision/change |
 | --- | --- |
+| 15 November 2026 | Simplified the planned reporting/refund workflow for a small business: Service Orders remain the main work/reporting record, with attached amount/date/reason refund entries, optional affected service, and Total/Refunded/Net Order Value columns. Start with order-date filters and current status/payment/assignee filters. Later refunds update earlier order-date totals. Invoice PDFs/history remain attached; separate cash-flow and accounting reporting are deferred. No refund/reporting functionality was implemented by this documentation change. |
 | 15 November 2026 | Recorded the next invoicing design in invoice-design.md: small Invoice record plus billing snapshots and stored PDF, actions on the order, proposed explicit Generate after submission and non-issuing draft preview, one A4 layout with configurable business content, fixed formatting, and email connection later. Updated the working plan to replace the earlier automatic-on-Submit assumption; trigger/stages, correction rules and deadline display remain explicit open decisions. No invoice functionality was implemented. |
 | 15 November 2026 | Made Order Notes editable in every order state, including Complete. Notes can be updated or cleared without reopening; item/service notes and other stage locks retain their existing rules. |
 | 15 November 2026 | Accepted and implemented the QOL pass: safe forms and confirmations, order work queues and business-timezone deadline rules, workload dashboard, preserved list navigation, item duplication/bulk deadlines/undo, catalogue archiving, staff deactivation/history protection, directory pagination and contact links. These retain the existing stages and locks. See qol-improvements.md for behaviour and checks. |

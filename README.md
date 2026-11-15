@@ -20,6 +20,11 @@ Next milestone: [invoice design and delivery](docs/invoice-design.md), covering
 the proposed Invoice record, stored PDF, layout/configuration, order actions,
 open correction rules and a checklist for resuming development.
 
+The same plan records [simple order-based refunds and reporting](docs/invoice-design.md#simple-refunds-and-reporting-directly-on-orders)
+for later implementation: attached refund entries, Total Refunded and Net Order
+Value, and reports filtered directly on Service Orders. Separate cash-flow and
+accounting screens are deferred.
+
 For development checks, run `python manage.py test crm.tests --noinput`.
 Install Node test dependencies with `npm ci`, then run `npm test` for JavaScript
 checks; the Django suite also uses them to exercise rendered order forms. Node
