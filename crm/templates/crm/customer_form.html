@@ -1,4 +1,5 @@
 {% extends "crm/base.html" %}
+{% load static %}
 
 {% block title %}{{ page_title }}{% endblock %}
 {% block page_title %}{{ page_title }}{% endblock %}
@@ -13,9 +14,20 @@
         <a class="button-link" href="{% url 'customers' %}">Back to customers</a>
     </div>
 
+    {% if form.instance.pk %}
+    {% if form.instance.is_archived %}<p class="customer-archive-notice" role="status">This customer is archived. Their details and orders are kept. Restore the customer to select them for new orders.</p>{% endif %}
+    <section class="panel customer-order-summary" aria-label="Customer orders">
+        <dl class="customer-order-counts">
+            <div><dt>Total Orders</dt><dd>{{ customer_order_counts.total_orders }}</dd></div>
+            <div><dt>Open Orders</dt><dd>{{ customer_order_counts.open_orders }}</dd></div>
+        </dl>
+        {% if perms.crm.view_serviceorder %}<a class="button-link" href="{% url 'orders' %}?customer={{ form.instance.pk }}">View Orders</a>{% endif %}
+    </section>
+    {% endif %}
     <section class="panel">
         <form method="post" class="form-grid">
             {% csrf_token %}
+            <p class="meta">Fields marked * are required.</p>
             {% if form.non_field_errors %}
                 <div class="non-field-errors">
                     {{ form.non_field_errors }}
@@ -24,25 +36,25 @@
 
             <div class="form-layout">
                 <div class="form-field">
-                    <label for="{{ form.first_name.id_for_label }}">First name</label>
+                    <label for="{{ form.first_name.id_for_label }}">First name <span class="required-marker" aria-hidden="true">*</span></label>
                     {{ form.first_name }}
                     {{ form.first_name.errors }}
                 </div>
 
                 <div class="form-field">
-                    <label for="{{ form.last_name.id_for_label }}">Last name</label>
+                    <label for="{{ form.last_name.id_for_label }}">Last name <span class="required-marker" aria-hidden="true">*</span></label>
                     {{ form.last_name }}
                     {{ form.last_name.errors }}
                 </div>
 
                 <div class="form-field">
-                    <label for="{{ form.email.id_for_label }}">Email</label>
+                    <label for="{{ form.email.id_for_label }}">Email <span class="required-marker" aria-hidden="true">*</span></label>
                     {{ form.email }}
                     {{ form.email.errors }}
                 </div>
 
                 <div class="form-field">
-                    <label for="{{ form.primary_phone.id_for_label }}">Primary phone</label>
+                    <label for="{{ form.primary_phone.id_for_label }}">Primary phone <span class="required-marker" aria-hidden="true">*</span></label>
                     {{ form.primary_phone }}
                     {{ form.primary_phone.errors }}
                 </div>
@@ -66,7 +78,43 @@
                 </div>
             </div>
 
-            <button class="button" type="submit">{{ submit_label }}</button>
+            <div class="button-row customer-form-actions">
+                <button class="button" type="submit">{{ submit_label }}</button>
+                {% if form.instance.pk %}
+                    {% if perms.crm.change_customer %}<button class="button secondary customer-secondary-action" type="button" data-customer-status-action>{% if form.instance.is_archived %}Restore{% else %}Archive{% endif %}</button>{% endif %}
+                    {% if not customer_order_counts.total_orders %}<button class="button danger customer-delete-button" type="button" data-delete-customer>Delete</button>{% endif %}
+                {% endif %}
+            </div>
         </form>
     </section>
+    {% if form.instance.pk and not customer_order_counts.total_orders %}
+    <dialog class="order-confirm-dialog" aria-labelledby="customer-delete-title" aria-describedby="customer-delete-message" data-customer-delete-dialog>
+        <h2 id="customer-delete-title">Delete customer</h2>
+        <p id="customer-delete-message">Are you sure you wish to delete {{ customer_delete_name }}? This cannot be undone.</p>
+        <form method="post" action="{% url 'delete_customer' form.instance.pk %}">
+            {% csrf_token %}
+            <div class="button-row order-confirm-actions">
+                <button class="button secondary" type="button" data-cancel-customer-delete autofocus>Cancel</button>
+                <button class="button danger" type="submit">Delete customer</button>
+            </div>
+        </form>
+    </dialog>
+    {% endif %}
+    {% if form.instance.pk and perms.crm.change_customer %}
+    <dialog class="order-confirm-dialog" aria-labelledby="customer-status-title" aria-describedby="customer-status-message" data-customer-status-dialog>
+        <h2 id="customer-status-title">{% if form.instance.is_archived %}Restore{% else %}Archive{% endif %} customer</h2>
+        <p id="customer-status-message">Are you sure you wish to {% if form.instance.is_archived %}restore{% else %}archive{% endif %} {{ customer_delete_name }}? {% if form.instance.is_archived %}The customer will be available for new orders again.{% else %}Their details and order history will be kept, and they will be hidden from new-order customer selection.{% endif %}</p>
+        <form method="post" action="{% if form.instance.is_archived %}{% url 'restore_customer' form.instance.pk %}{% else %}{% url 'archive_customer' form.instance.pk %}{% endif %}">
+            {% csrf_token %}
+            <div class="button-row order-confirm-actions">
+                <button class="button secondary" type="button" data-cancel-customer-status autofocus>Cancel</button>
+                <button class="button" type="submit">{% if form.instance.is_archived %}Restore{% else %}Archive{% endif %} customer</button>
+            </div>
+        </form>
+    </dialog>
+    {% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+    {% if form.instance.pk %}<script src="{% static 'crm/js/customer-delete.js' %}" defer></script>{% endif %}
 {% endblock %}

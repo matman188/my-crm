@@ -22,9 +22,15 @@
                 value="{{ search_query }}"
                 placeholder="Search by name, company, email, or phone"
             >
+            <label class="visually-hidden" for="customer-status-filter">Customer status</label>
+            <select id="customer-status-filter" class="search-input customer-status-filter" name="status">
+                <option value="active"{% if customer_status == 'active' %} selected{% endif %}>Active customers</option>
+                <option value="archived"{% if customer_status == 'archived' %} selected{% endif %}>Archived customers</option>
+                <option value="all"{% if customer_status == 'all' %} selected{% endif %}>All customers</option>
+            </select>
             <button class="button" type="submit">Search</button>
             {% if search_query %}
-                <a class="button-link" href="{% url 'customers' %}">Clear</a>
+                <a class="button-link" href="{% url 'customers' %}?status={{ customer_status }}">Clear</a>
             {% endif %}
         </form>
     </div>
@@ -37,7 +43,7 @@
                         <th>Customer</th>
                         <th>Company</th>
                         <th>Contact</th>
-                        <th>Owner</th>
+                        <th>Orders</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -46,9 +52,7 @@
                         <tr>
                             <td>
                                 <div class="user-name">{{ customer.first_name }}{% if customer.last_name %} {{ customer.last_name }}{% endif %}</div>
-                                {% if customer.notes %}
-                                    <div class="user-email">{{ customer.notes|truncatechars:90 }}</div>
-                                {% endif %}
+                                {% if customer.is_archived %}<span class="role-badge standard">Archived</span>{% endif %}
                             </td>
                             <td>
                                 {% if customer.company %}
@@ -72,19 +76,19 @@
                                 {% endif %}
                             </td>
                             <td>
-                                {% if customer.owner %}
-                                    <span class="status-pill">{{ customer.owner.get_full_name|default:customer.owner.username }}</span>
+                                {% if perms.crm.view_serviceorder %}
+                                    <a href="{% url 'orders' %}?customer={{ customer.pk }}" aria-label="View orders for {{ customer }}">{{ customer.order_count }}</a>
                                 {% else %}
-                                    <span class="meta">Unassigned</span>
+                                    {{ customer.order_count }}
                                 {% endif %}
                             </td>
                             <td>
                                 <div class="button-row">
-                                    <a class="button-link" href="{% url 'edit_customer' customer.id %}">Edit</a>
-                                    <form method="post" action="{% url 'delete_customer' customer.id %}">
+                                    <a class="button-link" href="{% url 'edit_customer' customer.id %}">View</a>
+                                    {% if not customer.order_count %}<form method="post" action="{% url 'delete_customer' customer.id %}">
                                         {% csrf_token %}
                                         <button class="button danger" type="submit">Delete</button>
-                                    </form>
+                                    </form>{% endif %}
                                 </div>
                             </td>
                         </tr>
@@ -93,8 +97,8 @@
             </table>
         {% else %}
             <div class="empty-state">
-                <h3>No customers yet</h3>
-                <p>Create your first customer record to start building out the CRM.</p>
+                <h3>No customers found</h3>
+                <p>Try another search or customer status, or create a new customer.</p>
             </div>
         {% endif %}
     </div>

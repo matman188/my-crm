@@ -12,14 +12,23 @@ from .catalog import (
     products,
     services,
 )
-from .customers import create_customer, customers, delete_customer, edit_customer
+from .customers import (
+    archive_customer,
+    create_customer,
+    customers,
+    delete_customer,
+    edit_customer,
+    restore_customer,
+)
 from .home import home
-from .orders import create_order, delete_order, edit_order, orders
+from .orders import create_order, delete_order, edit_order, orders, save_order_customer
 from .profile import edit_profile
 from .settings import system_settings
 from .users import change_user_password, create_user, delete_user, edit_user, users
 
 __all__ = [
+    "archive_customer",
+    "restore_customer",
     "change_user_password",
     "create_customer",
     "create_order",
@@ -43,6 +52,7 @@ __all__ = [
     "edit_user",
     "home",
     "orders",
+    "save_order_customer",
     "product_categories",
     "products",
     "services",

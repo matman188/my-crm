@@ -1,12 +1,31 @@
 from django.contrib import admin
 
+from crm.forms.customers import CustomerForm
 from crm.models import Customer, Product, ProductCategory, Service, SystemSettings
 
 
 @admin.register(Customer)
 class CustomerAdmin(admin.ModelAdmin):
-    list_display = ("first_name", "last_name", "company", "email", "primary_phone", "secondary_phone", "owner")
-    search_fields = ("first_name", "last_name", "company", "email", "primary_phone", "secondary_phone")
+    form = CustomerForm
+    list_display = (
+        "first_name",
+        "last_name",
+        "company",
+        "email",
+        "primary_phone",
+        "secondary_phone",
+        "is_archived",
+    )
+    search_fields = (
+        "first_name",
+        "last_name",
+        "company",
+        "email",
+        "primary_phone",
+        "secondary_phone",
+    )
+    list_filter = ("is_archived",)
+    readonly_fields = ("is_archived",)
 
 
 @admin.register(ProductCategory)

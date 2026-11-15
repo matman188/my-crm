@@ -12,6 +12,44 @@ class ServiceQuantityMigrationTests(TransactionTestCase):
         executor = MigrationExecutor(connection)
         executor.migrate(executor.loader.graph.leaf_nodes())
 
+    def test_archiving_migration_keeps_existing_customers_active_and_preserves_history(
+        self,
+    ):
+        before = [("crm", "0011_require_customer_contact_details_unique_email")]
+        after = [("crm", "0012_customer_archiving")]
+        self.addCleanup(self.restore_latest_schema)
+        executor = MigrationExecutor(connection)
+        executor.migrate(before)
+        old = executor.loader.project_state(before).apps
+        customer = old.get_model("crm", "Customer").objects.create(
+            first_name="Alex",
+            last_name="Smith",
+            email="alex@example.com",
+            primary_phone="0123456789",
+            notes="Keep notes",
+        )
+        order = old.get_model("crm", "ServiceOrder").objects.create(
+            customer=customer, currency="ZAR", status="complete"
+        )
+        before_customer = (
+            old.get_model("crm", "Customer").objects.values().get(pk=customer.pk)
+        )
+        before_order = (
+            old.get_model("crm", "ServiceOrder").objects.values().get(pk=order.pk)
+        )
+        executor = MigrationExecutor(connection)
+        executor.migrate(after)
+        current = executor.loader.project_state(after).apps
+        migrated = (
+            current.get_model("crm", "Customer").objects.values().get(pk=customer.pk)
+        )
+        self.assertFalse(migrated.pop("is_archived"))
+        self.assertEqual(migrated, before_customer)
+        self.assertEqual(
+            current.get_model("crm", "ServiceOrder").objects.values().get(pk=order.pk),
+            before_order,
+        )
+
     def test_legacy_product_quantities_and_labels_are_preserved(self):
         before = [("crm", "0007_serviceorder_orderitem_orderservicecharge_and_more")]
         after = [("crm", "0008_remove_orderitem_order_item_quantity_positive_and_more")]
@@ -153,3 +191,49 @@ class ServiceQuantityMigrationTests(TransactionTestCase):
         self.assertEqual(Order.objects.get(pk=unpaid.pk).payment_status, "unpaid")
         with self.assertRaises(IntegrityError), transaction.atomic():
             Order.objects.filter(pk=paid.pk).update(payment_status="partial")
+
+    def test_customer_contact_migration_preserves_records_and_enforces_unique_email(
+        self,
+    ):
+        before = [("crm", "0010_add_refunded_payment_status")]
+        after = [("crm", "0011_require_customer_contact_details_unique_email")]
+        self.addCleanup(self.restore_latest_schema)
+        executor = MigrationExecutor(connection)
+        executor.migrate(before)
+        old = executor.loader.project_state(before).apps
+        Customer = old.get_model("crm", "Customer")
+        customer = Customer.objects.create(
+            first_name="Alex",
+            last_name="Smith",
+            email="Alex@Example.com",
+            primary_phone="0123456789",
+            notes="Keep special customer notes",
+        )
+        order = old.get_model("crm", "ServiceOrder").objects.create(
+            customer=customer,
+            currency="ZAR",
+            notes="Separate order instructions",
+            revision=5,
+        )
+        customer_before = Customer.objects.values().get(pk=customer.pk)
+        order_before = (
+            old.get_model("crm", "ServiceOrder").objects.values().get(pk=order.pk)
+        )
+        executor = MigrationExecutor(connection)
+        executor.migrate(after)
+        current = executor.loader.project_state(after).apps
+        Customer = current.get_model("crm", "Customer")
+        self.assertEqual(Customer.objects.values().get(pk=customer.pk), customer_before)
+        self.assertEqual(
+            current.get_model("crm", "ServiceOrder").objects.values().get(pk=order.pk),
+            order_before,
+        )
+        for name in ("first_name", "last_name", "email", "primary_phone"):
+            self.assertFalse(Customer._meta.get_field(name).blank)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Customer.objects.create(
+                first_name="Other",
+                last_name="Customer",
+                email=" ALEX@example.com ",
+                primary_phone="0987654321",
+            )

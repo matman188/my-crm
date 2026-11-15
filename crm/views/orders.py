@@ -1,19 +1,41 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import F, Prefetch, Q
-from django.http import HttpResponseBadRequest, HttpResponseForbidden
+from django.forms import IntegerField
+from django.http import HttpResponseBadRequest, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 
+from crm.forms.customers import CustomerForm
 from crm.forms.orders import (
+    CustomerChoiceField,
     DeleteDraftForm,
     OrderConflict,
     OrderEditor,
     OrderFilterForm,
 )
-from crm.models import OrderItem, OrderServiceCharge, Service, ServiceOrder
+from crm.models import Customer, OrderItem, OrderServiceCharge, Service, ServiceOrder
+
+
+def _customer_entry(customer, order_id=None):
+    url_name = "save_order_customer" if order_id else "save_new_order_customer"
+    kwargs = {"customer_id": customer.pk}
+    if order_id:
+        kwargs["order_id"] = order_id
+    return {
+        "id": customer.pk,
+        "name": str(customer),
+        "label": CustomerChoiceField.label_from_instance(customer),
+        "notes": customer.notes,
+        "email": customer.email,
+        "is_archived": customer.is_archived,
+        "details": {name: getattr(customer, name) for name in CustomerForm.Meta.fields},
+        "save_url": reverse(url_name, kwargs=kwargs),
+    }
 
 
 @login_required
@@ -31,6 +53,8 @@ def orders(request):
     if not valid_filters:
         queryset = queryset.none()
     else:
+        if filters.cleaned_data["customer"]:
+            queryset = queryset.filter(customer=filters.cleaned_data["customer"])
         if filters.cleaned_data["status"]:
             queryset = queryset.filter(status=filters.cleaned_data["status"])
         if filters.cleaned_data["payment_status"]:
@@ -86,6 +110,12 @@ def _order_form(request, instance=None):
             order = editor.save()
         except OrderConflict as error:
             editor.form.add_error(None, str(error))
+        except IntegrityError:
+            if (
+                not (editor.new_customer or editor.editing_customer)
+                or not editor.customer_form.add_duplicate_email_error()
+            ):
+                raise
         else:
             messages.success(request, f"Order {order.reference} was saved.")
             return redirect("edit_order", order_id=order.pk)
@@ -100,6 +130,23 @@ def _order_form(request, instance=None):
             "name", "pk"
         )
     ]
+    customer_catalog = [
+        _customer_entry(customer, editor.instance.pk)
+        for customer in editor.form.fields["customer"].queryset
+    ]
+    selected_customer = next(
+        (
+            customer
+            for customer in customer_catalog
+            if str(customer["id"]) == str(editor.form["customer"].value())
+        ),
+        None,
+    )
+    customer_notes = (
+        editor.customer_form["notes"].value()
+        if editor.new_customer or editor.editing_customer
+        else selected_customer["notes"] if selected_customer else ""
+    )
     return render(
         request,
         "crm/order_form.html",
@@ -107,16 +154,8 @@ def _order_form(request, instance=None):
             "editor": editor,
             "order": editor.instance,
             "service_catalog": catalog,
-            "customer_catalog": [
-                {
-                    "id": customer.pk,
-                    "name": str(customer),
-                    "label": editor.form.fields["customer"].label_from_instance(
-                        customer
-                    ),
-                }
-                for customer in editor.form.fields["customer"].queryset
-            ],
+            "customer_catalog": customer_catalog,
+            "customer_notes": customer_notes,
             "page_title": (
                 f"Order {instance.reference}" if instance else "Create service order"
             ),
@@ -128,6 +167,58 @@ def _order_form(request, instance=None):
 @permission_required("crm.add_serviceorder", raise_exception=True)
 def create_order(request):
     return _order_form(request)
+
+
+@login_required
+@permission_required("crm.change_customer", raise_exception=True)
+@require_POST
+def save_order_customer(request, customer_id, order_id=None):
+    permission = "crm.change_serviceorder" if order_id else "crm.add_serviceorder"
+    if not request.user.has_perm(permission):
+        raise PermissionDenied
+    revision = None
+    if order_id:
+        try:
+            revision = IntegerField(min_value=1, max_value=2147483647).clean(
+                request.POST.get("revision")
+            )
+        except ValidationError:
+            return JsonResponse(
+                {"message": "Reload the order before editing its customer."}, status=400
+            )
+    customer = get_object_or_404(Customer, pk=customer_id)
+    form = CustomerForm(request.POST, instance=customer, prefix="customer")
+    if form.is_valid():
+        try:
+            with transaction.atomic():
+                if order_id:
+                    # Lock the saved draft for this transaction without changing
+                    # its revision, details, or update timestamp.
+                    claimed = ServiceOrder.objects.filter(
+                        pk=order_id, status=ServiceOrder.Status.DRAFT, revision=revision
+                    ).update(revision=F("revision"))
+                    if not claimed:
+                        order = get_object_or_404(ServiceOrder, pk=order_id)
+                        if order.status != ServiceOrder.Status.DRAFT:
+                            return JsonResponse(
+                                {
+                                    "message": "Customer editing is only available in Draft."
+                                },
+                                status=403,
+                            )
+                        return JsonResponse(
+                            {
+                                "message": "This order changed. Reload it before editing the customer."
+                            },
+                            status=409,
+                        )
+                customer = form.save()
+        except IntegrityError:
+            if not form.add_duplicate_email_error():
+                raise
+        else:
+            return JsonResponse({"customer": _customer_entry(customer, order_id)})
+    return JsonResponse({"errors": form.errors.get_json_data()}, status=400)
 
 
 @login_required

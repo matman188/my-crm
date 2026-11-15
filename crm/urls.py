@@ -1,6 +1,8 @@
 from django.urls import path
 
 from crm.views import (
+    archive_customer,
+    restore_customer,
     change_user_password,
     create_customer,
     create_order,
@@ -24,6 +26,7 @@ from crm.views import (
     edit_user,
     home,
     orders,
+    save_order_customer,
     product_categories,
     products,
     services,
@@ -37,14 +40,48 @@ urlpatterns = [
     path("orders/create/", create_order, name="create_order"),
     path("orders/<int:order_id>/edit/", edit_order, name="edit_order"),
     path("orders/<int:order_id>/delete/", delete_order, name="delete_order"),
+    path(
+        "orders/customers/<int:customer_id>/save/",
+        save_order_customer,
+        name="save_new_order_customer",
+    ),
+    path(
+        "orders/<int:order_id>/customers/<int:customer_id>/save/",
+        save_order_customer,
+        name="save_order_customer",
+    ),
     path("customers/", customers, name="customers"),
+    path(
+        "customers/<int:customer_id>/archive/",
+        archive_customer,
+        name="archive_customer",
+    ),
+    path(
+        "customers/<int:customer_id>/restore/",
+        restore_customer,
+        name="restore_customer",
+    ),
     path("customers/create/", create_customer, name="create_customer"),
     path("customers/<int:customer_id>/edit/", edit_customer, name="edit_customer"),
-    path("customers/<int:customer_id>/delete/", delete_customer, name="delete_customer"),
+    path(
+        "customers/<int:customer_id>/delete/", delete_customer, name="delete_customer"
+    ),
     path("product-categories/", product_categories, name="product_categories"),
-    path("product-categories/create/", create_product_category, name="create_product_category"),
-    path("product-categories/<int:category_id>/edit/", edit_product_category, name="edit_product_category"),
-    path("product-categories/<int:category_id>/delete/", delete_product_category, name="delete_product_category"),
+    path(
+        "product-categories/create/",
+        create_product_category,
+        name="create_product_category",
+    ),
+    path(
+        "product-categories/<int:category_id>/edit/",
+        edit_product_category,
+        name="edit_product_category",
+    ),
+    path(
+        "product-categories/<int:category_id>/delete/",
+        delete_product_category,
+        name="delete_product_category",
+    ),
     path("products/", products, name="products"),
     path("products/create/", create_product, name="create_product"),
     path("products/<int:product_id>/edit/", edit_product, name="edit_product"),
@@ -58,6 +95,10 @@ urlpatterns = [
     path("users/", users, name="users"),
     path("users/create/", create_user, name="create_user"),
     path("users/<int:user_id>/edit/", edit_user, name="edit_user"),
-    path("users/<int:user_id>/change-password/", change_user_password, name="change_user_password"),
+    path(
+        "users/<int:user_id>/change-password/",
+        change_user_password,
+        name="change_user_password",
+    ),
     path("users/<int:user_id>/delete/", delete_user, name="delete_user"),
 ]

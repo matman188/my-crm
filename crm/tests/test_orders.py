@@ -2,6 +2,7 @@ import re
 from datetime import date, time
 from decimal import Decimal
 from html.parser import HTMLParser
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
@@ -9,6 +10,8 @@ from django.test import Client, TestCase
 from django.urls import reverse
 
 from crm.authz import ACCESS_LEVEL_USER, assign_access_level
+from crm.forms.customers import CustomerForm
+from crm.forms.orders import OrderConflict, OrderEditor
 from crm.models import (
     Customer,
     OrderItem,
@@ -29,7 +32,10 @@ class ServiceOrderTests(TestCase):
             username="sewist", first_name="Jordan"
         )
         cls.customer = Customer.objects.create(
-            first_name="Alex", last_name="Dancer", email="alex@example.com"
+            first_name="Alex",
+            last_name="Dancer",
+            email="alex@example.com",
+            primary_phone="0123456789",
         )
         cls.product = Product.objects.create(name="Ballet shoes (pair)")
         cls.other_product = Product.objects.create(name="Dance bag")
@@ -199,6 +205,7 @@ class ServiceOrderTests(TestCase):
                 "customer_mode": "new",
                 "customer": "",
                 "customer-first_name": "New dancer",
+                "customer-last_name": "Smith",
                 "customer-email": "new@example.com",
                 "customer-primary_phone": "0123456789",
                 "assigned_to": str(self.worker.pk),
@@ -217,6 +224,9 @@ class ServiceOrderTests(TestCase):
             {
                 "customer_mode": "new",
                 "customer-first_name": "Do not save",
+                "customer-last_name": "Smith",
+                "customer-email": "invalid-order@example.com",
+                "customer-primary_phone": "0123456789",
                 "items-0-services-1-quantity": "0",
             }
         )
@@ -317,7 +327,15 @@ class ServiceOrderTests(TestCase):
             ).status_code,
             302,
         )
-        stale.update({"customer_mode": "new", "customer-first_name": "Stale customer"})
+        stale.update(
+            {
+                "customer_mode": "new",
+                "customer-first_name": "Stale customer",
+                "customer-last_name": "Smith",
+                "customer-email": "stale@example.com",
+                "customer-primary_phone": "0123456789",
+            }
+        )
         response = self.client.post(reverse("edit_order", args=[order.pk]), stale)
         self.assertContains(response, "changed while you were editing")
         order.refresh_from_db()
@@ -439,6 +457,593 @@ class ServiceOrderTests(TestCase):
         self.assertEqual(
             response.context["editor"].form["customer"].value(), self.customer.pk
         )
+
+    def new_customer_payload(self):
+        return dict(
+            self.payload(),
+            **{
+                "customer_mode": "new",
+                "customer": "",
+                "customer-first_name": "New",
+                "customer-last_name": "Customer",
+                "customer-email": "new-contact@example.com",
+                "customer-primary_phone": "0123456789",
+                "customer-notes": "Special customer instructions",
+            },
+        )
+
+    def test_customer_modal_requires_and_marks_all_four_contact_fields(self):
+        response = self.client.get(reverse("create_order"))
+        self.assertContains(response, 'class="required-marker"', count=4)
+        for name in ("first_name", "last_name", "email", "primary_phone"):
+            with self.subTest(name=name):
+                self.assertTrue(
+                    response.context["editor"].customer_form.fields[name].required
+                )
+                data = self.new_customer_payload()
+                data[f"customer-{name}"] = ""
+                invalid = self.client.post(reverse("create_order"), data)
+                self.assertIn(name, invalid.context["editor"].customer_form.errors)
+                self.assertContains(invalid, 'data-has-errors="true"')
+                self.assertFalse(ServiceOrder.objects.exists())
+                self.assertEqual(Customer.objects.count(), 1)
+
+    def test_inline_duplicate_email_reopens_modal_without_partial_order_writes(self):
+        data = self.new_customer_payload()
+        data["customer-email"] = " ALEX@EXAMPLE.COM "
+        response = self.client.post(reverse("create_order"), data)
+        self.assertContains(response, CustomerForm.duplicate_email_message)
+        self.assertIn("email", response.context["editor"].customer_form.errors)
+        self.assertContains(response, 'data-has-errors="true"')
+        self.assertContains(response, "Left side")
+        self.assertFalse(ServiceOrder.objects.exists())
+        self.assertFalse(OrderItem.objects.exists())
+        self.assertEqual(Customer.objects.count(), 1)
+
+    def test_inline_duplicate_race_rolls_back_order_revision_and_returns_modal_error(
+        self,
+    ):
+        order = self.create_order()
+        data = self.edit_payload(order)
+        data.update(
+            {
+                key: value
+                for key, value in self.new_customer_payload().items()
+                if key.startswith("customer")
+            }
+        )
+        data["customer-email"] = "alex@example.com"
+        with patch.object(
+            CustomerForm, "_email_in_use", side_effect=[False, True]
+        ), patch.object(Customer, "validate_constraints"):
+            response = self.client.post(reverse("edit_order", args=[order.pk]), data)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, CustomerForm.duplicate_email_message)
+        self.assertContains(response, 'data-has-errors="true"')
+        order.refresh_from_db()
+        self.assertEqual(order.revision, 1)
+        self.assertEqual(order.customer, self.customer)
+        self.assertEqual(order.charges.count(), 3)
+        self.assertEqual(Customer.objects.count(), 1)
+
+    def test_orders_show_current_customer_notes_in_every_stage_as_read_only_text(self):
+        self.customer.notes = "Use the side entrance.\n<strong>VIP</strong>"
+        self.customer.save(update_fields=["notes"])
+        for status in ServiceOrder.Status.values:
+            with self.subTest(status=status):
+                order = self.create_order(
+                    dict(self.payload(), status=status, assigned_to=str(self.worker.pk))
+                )
+                response = self.client.get(reverse("edit_order", args=[order.pk]))
+                self.assertEqual(
+                    response.context["customer_notes"], self.customer.notes
+                )
+                self.assertContains(response, "Customer Notes")
+                self.assertContains(
+                    response, "Use the side entrance.\n&lt;strong&gt;VIP&lt;/strong&gt;"
+                )
+                self.assertNotContains(response, "<strong>VIP</strong>")
+                customer = next(
+                    c
+                    for c in response.context["customer_catalog"]
+                    if c["id"] == self.customer.pk
+                )
+                self.assertEqual(customer["notes"], self.customer.notes)
+                self.assertEqual(customer["email"], self.customer.email)
+        self.customer.notes = "Updated customer instructions"
+        self.customer.save(update_fields=["notes"])
+        response = self.client.get(reverse("edit_order", args=[order.pk]))
+        self.assertContains(response, "Updated customer instructions")
+
+    def test_new_customer_notes_remain_separate_from_order_notes(self):
+        order = self.create_order(self.new_customer_payload())
+        response = self.client.get(reverse("edit_order", args=[order.pk]))
+        self.assertEqual(
+            response.context["customer_notes"], "Special customer instructions"
+        )
+        self.assertEqual(order.customer.notes, "Special customer instructions")
+        self.assertEqual(order.notes, "Call before collection")
+
+    def test_customer_notes_match_the_selected_customer_on_invalid_and_locked_orders(
+        self,
+    ):
+        other = Customer.objects.create(
+            first_name="Other",
+            last_name="Person",
+            email="other@example.com",
+            primary_phone="0123456789",
+            notes="Other customer notes",
+        )
+        order = self.create_order()
+        data = self.edit_payload(order)
+        data.update({"customer": str(other.pk), "items-0-due_date": "invalid"})
+        response = self.client.post(reverse("edit_order", args=[order.pk]), data)
+        self.assertEqual(response.context["customer_notes"], other.notes)
+        order.status = "in_progress"
+        order.save(update_fields=["status"])
+        self.customer.notes = "Original customer notes"
+        self.customer.save(update_fields=["notes"])
+        response = self.client.post(
+            reverse("edit_order", args=[order.pk]),
+            dict(
+                self.workflow_payload(order), customer=str(other.pk), action="invalid"
+            ),
+        )
+        self.assertEqual(response.context["customer_notes"], self.customer.notes)
+
+    def customer_edit_payload(self, order=None):
+        data = self.edit_payload(order) if order else self.payload()
+        data.update(
+            {
+                "customer_mode": "edit",
+                "customer": str(self.customer.pk),
+                "customer-first_name": "Updated",
+                "customer-last_name": "Customer",
+                "customer-email": " ALEX@EXAMPLE.COM ",
+                "customer-primary_phone": "0987654321",
+                "customer-secondary_phone": "0123400000",
+                "customer-company": "Updated business",
+                "customer-notes": "New shared customer instructions",
+            }
+        )
+        return data
+
+    def test_draft_customer_edit_updates_the_same_record_with_unsaved_order_changes(
+        self,
+    ):
+        order = self.create_order()
+        self.customer.owner = self.worker
+        self.customer.save(update_fields=["owner"])
+        charge_ids = list(order.charges.values_list("pk", flat=True))
+        data = self.customer_edit_payload(order)
+        data["items-0-due_time"] = "17:30"
+        data["customer-owner"] = str(self.user.pk)
+        self.assertEqual(
+            self.client.post(reverse("edit_order", args=[order.pk]), data).status_code,
+            302,
+        )
+        self.customer.refresh_from_db()
+        order.refresh_from_db()
+        self.assertEqual(Customer.objects.count(), 1)
+        self.assertEqual(order.customer_id, self.customer.pk)
+        self.assertEqual(self.customer.first_name, "Updated")
+        self.assertEqual(self.customer.last_name, "Customer")
+        self.assertEqual(self.customer.email, "alex@example.com")
+        self.assertEqual(self.customer.primary_phone, "0987654321")
+        self.assertEqual(self.customer.secondary_phone, "0123400000")
+        self.assertEqual(self.customer.company, "Updated business")
+        self.assertEqual(self.customer.notes, "New shared customer instructions")
+        self.assertEqual(self.customer.owner, self.worker)
+        self.assertEqual(order.notes, "Call before collection")
+        self.assertEqual(order.items.get().due_time, time(17, 30))
+        self.assertEqual(list(order.charges.values_list("pk", flat=True)), charge_ids)
+        self.assertEqual(order.total, Decimal("99.40"))
+
+    def test_selected_customer_can_be_edited_while_creating_an_order(self):
+        order = self.create_order(self.customer_edit_payload())
+        self.customer.refresh_from_db()
+        self.assertEqual(order.customer_id, self.customer.pk)
+        self.assertEqual(self.customer.first_name, "Updated")
+        self.assertEqual(Customer.objects.count(), 1)
+
+    def test_inline_customer_edit_validation_keeps_customer_and_order_unchanged(self):
+        other = Customer.objects.create(
+            first_name="Other",
+            last_name="Person",
+            email="other@example.com",
+            primary_phone="0123456789",
+        )
+        order = self.create_order()
+        for field, value in (
+            ("last_name", ""),
+            ("email", "OTHER@example.com"),
+            ("primary_phone", ""),
+        ):
+            with self.subTest(field=field):
+                data = self.customer_edit_payload(order)
+                data[f"customer-{field}"] = value
+                response = self.client.post(
+                    reverse("edit_order", args=[order.pk]), data
+                )
+                self.assertEqual(response.status_code, 200)
+                editor = response.context["editor"]
+                self.assertTrue(editor.editing_customer)
+                self.assertEqual(editor.customer_form.instance.pk, self.customer.pk)
+                self.assertIn(field, editor.customer_form.errors)
+                self.assertContains(response, 'data-has-errors="true"')
+                self.assertContains(response, "Save customer")
+                self.assertContains(response, 'value="Updated"')
+                self.assertEqual(
+                    response.context["customer_notes"],
+                    "New shared customer instructions",
+                )
+                self.customer.refresh_from_db()
+                order.refresh_from_db()
+                self.assertEqual(self.customer.first_name, "Alex")
+                self.assertEqual(order.revision, 1)
+                self.assertEqual(Customer.objects.count(), 2)
+        self.assertTrue(Customer.objects.filter(pk=other.pk).exists())
+
+    def test_stale_order_cannot_save_customer_edits(self):
+        order = self.create_order()
+        data = self.customer_edit_payload(order)
+        ServiceOrder.objects.filter(pk=order.pk).update(revision=2)
+        response = self.client.post(reverse("edit_order", args=[order.pk]), data)
+        self.assertContains(response, "changed while you were editing")
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.first_name, "Alex")
+        self.assertEqual(self.customer.notes, "")
+
+    def test_edit_customer_requires_change_customer_permission(self):
+        order = self.create_order()
+        restricted = get_user_model().objects.create_user(username="order_editor_only")
+        restricted.user_permissions.add(
+            Permission.objects.get(codename="change_serviceorder")
+        )
+        self.client.force_login(restricted)
+        response = self.client.get(reverse("edit_order", args=[order.pk]))
+        self.assertNotContains(response, "data-edit-customer")
+        response = self.client.post(
+            reverse("edit_order", args=[order.pk]), self.customer_edit_payload(order)
+        )
+        self.assertContains(response, "You do not have permission to edit customers.")
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.first_name, "Alex")
+
+    def test_customer_edit_controls_and_forged_edits_stay_locked_after_draft(self):
+        for status in ("in_progress", "complete", "cancelled"):
+            with self.subTest(status=status):
+                order = self.create_order(
+                    dict(self.payload(), status=status, assigned_to=str(self.worker.pk))
+                )
+                response = self.client.get(reverse("edit_order", args=[order.pk]))
+                self.assertNotContains(response, "data-edit-customer")
+                self.assertEqual(
+                    self.client.post(
+                        reverse("edit_order", args=[order.pk]),
+                        self.customer_edit_payload(order),
+                    ).status_code,
+                    302,
+                )
+                self.customer.refresh_from_db()
+                self.assertEqual(self.customer.first_name, "Alex")
+                self.assertEqual(self.customer.notes, "")
+        order = self.create_order()
+        response = self.client.get(reverse("edit_order", args=[order.pk]))
+        self.assertContains(response, "data-edit-customer")
+        catalog_customer = next(
+            c
+            for c in response.context["customer_catalog"]
+            if c["id"] == self.customer.pk
+        )
+        self.assertEqual(catalog_customer["details"]["first_name"], "Alex")
+        self.assertEqual(catalog_customer["details"]["primary_phone"], "0123456789")
+
+    def test_edit_customer_rejects_missing_or_invalid_selected_customer(self):
+        for customer in ("", "999999", "invalid"):
+            data = self.customer_edit_payload()
+            data["customer"] = customer
+            response = self.client.post(reverse("create_order"), data)
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("customer", response.context["editor"].form.errors)
+            self.assertEqual(Customer.objects.count(), 1)
+            self.assertFalse(ServiceOrder.objects.exists())
+
+    def test_inline_customer_edit_duplicate_race_rolls_back_order_and_customer(self):
+        other = Customer.objects.create(
+            first_name="Other",
+            last_name="Person",
+            email="other@example.com",
+            primary_phone="0123456789",
+        )
+        order = self.create_order()
+        data = self.customer_edit_payload(order)
+        data["customer-email"] = other.email
+        with patch.object(
+            CustomerForm, "_email_in_use", side_effect=[False, True]
+        ), patch.object(Customer, "validate_constraints"):
+            response = self.client.post(reverse("edit_order", args=[order.pk]), data)
+        self.assertContains(response, CustomerForm.duplicate_email_message)
+        self.assertContains(response, 'data-has-errors="true"')
+        order.refresh_from_db()
+        self.customer.refresh_from_db()
+        self.assertEqual(order.revision, 1)
+        self.assertEqual(self.customer.first_name, "Alex")
+        self.assertEqual(self.customer.email, "alex@example.com")
+
+    def customer_save_url(self, order=None, customer=None):
+        kwargs = {"customer_id": (customer or self.customer).pk}
+        if order:
+            kwargs["order_id"] = order.pk
+        return reverse(
+            "save_order_customer" if order else "save_new_order_customer", kwargs=kwargs
+        )
+
+    def test_customer_modal_save_changes_only_customer_and_keeps_order_revision(self):
+        self.customer.owner = self.worker
+        self.customer.save(update_fields=["owner"])
+        order = self.create_order()
+        before = ServiceOrder.objects.values().get(pk=order.pk)
+        items_before = list(order.items.values())
+        charges_before = list(order.charges.values())
+        data = self.customer_edit_payload(order)
+        data.update(
+            {
+                "notes": "Do not save order notes",
+                "items-0-due_time": "18:45",
+                "customer-owner": str(self.user.pk),
+            }
+        )
+        response = self.client.post(self.customer_save_url(order), data)
+        self.assertEqual(response.status_code, 200)
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.first_name, "Updated")
+        self.assertEqual(self.customer.email, "alex@example.com")
+        self.assertEqual(self.customer.notes, "New shared customer instructions")
+        self.assertEqual(self.customer.owner, self.worker)
+        self.assertEqual(Customer.objects.count(), 1)
+        self.assertEqual(ServiceOrder.objects.values().get(pk=order.pk), before)
+        self.assertEqual(list(order.items.values()), items_before)
+        self.assertEqual(list(order.charges.values()), charges_before)
+        result = response.json()["customer"]
+        self.assertEqual(result["id"], self.customer.pk)
+        self.assertEqual(result["details"]["first_name"], "Updated")
+        self.assertEqual(result["notes"], self.customer.notes)
+        self.assertIn("Updated Customer", result["label"])
+        self.assertEqual(result["save_url"], self.customer_save_url(order))
+        # The unsaved order can still be saved using its original revision.
+        ordinary_order_save = self.edit_payload(order)
+        ordinary_order_save["notes"] = "Now save order notes"
+        self.assertEqual(
+            self.client.post(
+                reverse("edit_order", args=[order.pk]), ordinary_order_save
+            ).status_code,
+            302,
+        )
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.notes, "New shared customer instructions")
+
+    def test_customer_modal_save_works_before_an_order_is_created(self):
+        response = self.client.post(
+            self.customer_save_url(), self.customer_edit_payload()
+        )
+        self.assertEqual(response.status_code, 200)
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.first_name, "Updated")
+        self.assertFalse(ServiceOrder.objects.exists())
+        self.assertEqual(
+            response.json()["customer"]["save_url"], self.customer_save_url()
+        )
+
+    def test_customer_modal_can_save_pending_customer_selection_without_changing_order(
+        self,
+    ):
+        order = self.create_order()
+        other = Customer.objects.create(
+            first_name="Other",
+            last_name="Person",
+            email="other@example.com",
+            primary_phone="0123456789",
+        )
+        data = self.customer_edit_payload(order)
+        data["customer-email"] = other.email
+        response = self.client.post(self.customer_save_url(order, other), data)
+        self.assertEqual(response.status_code, 200)
+        other.refresh_from_db()
+        order.refresh_from_db()
+        self.assertEqual(other.first_name, "Updated")
+        self.assertEqual(order.customer_id, self.customer.pk)
+
+    def test_customer_modal_save_returns_field_errors_without_changes(self):
+        order = self.create_order()
+        Customer.objects.create(
+            first_name="Other",
+            last_name="Person",
+            email="other@example.com",
+            primary_phone="0123456789",
+        )
+        for field, value in (
+            ("last_name", ""),
+            ("primary_phone", ""),
+            ("email", "OTHER@example.com"),
+        ):
+            with self.subTest(field=field):
+                data = self.customer_edit_payload(order)
+                data[f"customer-{field}"] = value
+                response = self.client.post(self.customer_save_url(order), data)
+                self.assertEqual(response.status_code, 400)
+                self.assertIn(field, response.json()["errors"])
+                self.customer.refresh_from_db()
+                order.refresh_from_db()
+                self.assertEqual(self.customer.first_name, "Alex")
+                self.assertEqual(order.revision, 1)
+
+    def test_customer_modal_save_obeys_stage_and_stale_order_locks(self):
+        order = self.create_order()
+        data = self.customer_edit_payload(order)
+        ServiceOrder.objects.filter(pk=order.pk).update(revision=2)
+        response = self.client.post(self.customer_save_url(order), data)
+        self.assertEqual(response.status_code, 409)
+        for status in ("in_progress", "complete", "cancelled"):
+            ServiceOrder.objects.filter(pk=order.pk).update(status=status, revision=1)
+            response = self.client.post(self.customer_save_url(order), data)
+            self.assertEqual(response.status_code, 403)
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.first_name, "Alex")
+
+    def test_customer_modal_save_requires_customer_and_order_permissions(self):
+        order = self.create_order()
+        for permissions in (
+            ("change_customer",),
+            ("change_serviceorder", "add_serviceorder"),
+        ):
+            user = get_user_model().objects.create_user(
+                username="modal_" + permissions[0]
+            )
+            user.user_permissions.add(
+                *Permission.objects.filter(codename__in=permissions)
+            )
+            self.client.force_login(user)
+            for url in (self.customer_save_url(order), self.customer_save_url()):
+                self.assertEqual(
+                    self.client.post(
+                        url, self.customer_edit_payload(order)
+                    ).status_code,
+                    403,
+                )
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.first_name, "Alex")
+
+    def test_customer_modal_save_requires_post_revision_and_valid_customer(self):
+        order = self.create_order()
+        self.assertEqual(
+            self.client.get(self.customer_save_url(order)).status_code, 405
+        )
+        for revision in ("", "invalid", "0", "9999999999999999999999999999999999"):
+            data = self.customer_edit_payload(order)
+            data["revision"] = revision
+            self.assertEqual(
+                self.client.post(self.customer_save_url(order), data).status_code, 400
+            )
+        self.assertEqual(
+            self.client.post(
+                reverse("save_new_order_customer", args=[999999]),
+                self.customer_edit_payload(),
+            ).status_code,
+            404,
+        )
+
+    def test_customer_modal_save_requires_csrf(self):
+        order = self.create_order()
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.user)
+        client.get(reverse("edit_order", args=[order.pk]))
+        data = self.customer_edit_payload(order)
+        self.assertEqual(
+            client.post(self.customer_save_url(order), data).status_code, 403
+        )
+        response = client.post(
+            self.customer_save_url(order),
+            data,
+            HTTP_X_CSRFTOKEN=client.cookies["csrftoken"].value,
+        )
+        self.assertEqual(response.status_code, 200)
+        order.refresh_from_db()
+        self.assertEqual(order.revision, 1)
+
+    def test_customer_modal_save_duplicate_race_returns_error_and_preserves_order(self):
+        order = self.create_order()
+        other = Customer.objects.create(
+            first_name="Other",
+            last_name="Person",
+            email="other@example.com",
+            primary_phone="0123456789",
+        )
+        data = self.customer_edit_payload(order)
+        data["customer-email"] = other.email
+        with patch.object(
+            CustomerForm, "_email_in_use", side_effect=[False, True]
+        ), patch.object(Customer, "validate_constraints"):
+            response = self.client.post(self.customer_save_url(order), data)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("email", response.json()["errors"])
+        order.refresh_from_db()
+        self.customer.refresh_from_db()
+        self.assertEqual(order.revision, 1)
+        self.assertEqual(self.customer.email, "alex@example.com")
+
+    def test_archived_customer_cannot_be_selected_for_new_orders(self):
+        Customer.objects.filter(pk=self.customer.pk).update(is_archived=True)
+        response = self.client.get(reverse("create_order"))
+        self.assertNotIn(
+            self.customer.pk, {c["id"] for c in response.context["customer_catalog"]}
+        )
+        response = self.client.post(reverse("create_order"), self.payload())
+        self.assertIn("customer", response.context["editor"].form.errors)
+        self.assertFalse(ServiceOrder.objects.exists())
+
+    def test_existing_orders_keep_archived_customers_and_save_in_all_stages(self):
+        orders = [
+            self.create_order(
+                dict(self.payload(), status=status, assigned_to=str(self.worker.pk))
+            )
+            for status in ServiceOrder.Status.values
+        ]
+        Customer.objects.filter(pk=self.customer.pk).update(is_archived=True)
+        for order in orders:
+            response = self.client.get(reverse("edit_order", args=[order.pk]))
+            customer = next(
+                c
+                for c in response.context["customer_catalog"]
+                if c["id"] == self.customer.pk
+            )
+            self.assertTrue(customer["is_archived"])
+            self.assertIn("(Archived)", customer["label"])
+            self.assertEqual(
+                self.client.post(
+                    reverse("edit_order", args=[order.pk]), self.edit_payload(order)
+                ).status_code,
+                302,
+            )
+            order.refresh_from_db()
+            self.assertEqual(order.customer_id, self.customer.pk)
+            self.assertEqual(order.total, Decimal("99.40"))
+
+    def test_draft_cannot_switch_to_a_different_archived_customer(self):
+        order = self.create_order()
+        archived = Customer.objects.create(
+            first_name="Archived",
+            last_name="Customer",
+            email="archived@example.com",
+            primary_phone="0123456789",
+            is_archived=True,
+        )
+        data = self.edit_payload(order)
+        data["customer"] = str(archived.pk)
+        response = self.client.post(reverse("edit_order", args=[order.pk]), data)
+        self.assertIn("customer", response.context["editor"].form.errors)
+        order.refresh_from_db()
+        self.assertEqual(order.customer_id, self.customer.pk)
+
+    def test_customer_archived_after_validation_cannot_receive_a_new_order(self):
+        editor = OrderEditor(user=self.user, data=self.payload())
+        self.assertTrue(editor.is_valid(), editor.form.errors)
+        Customer.objects.filter(pk=self.customer.pk).update(is_archived=True)
+        with self.assertRaisesMessage(OrderConflict, "archived or removed"):
+            editor.save()
+        self.assertFalse(ServiceOrder.objects.exists())
+
+    def test_inline_contact_edits_do_not_undo_concurrent_archiving(self):
+        order = self.create_order()
+        editor = OrderEditor(
+            user=self.user, instance=order, data=self.customer_edit_payload(order)
+        )
+        self.assertTrue(editor.is_valid(), editor.form.errors)
+        Customer.objects.filter(pk=self.customer.pk).update(is_archived=True)
+        editor.save()
+        self.customer.refresh_from_db()
+        self.assertTrue(self.customer.is_archived)
+        self.assertEqual(self.customer.notes, "New shared customer instructions")
 
     def test_customer_product_and_service_used_on_orders_cannot_be_deleted(self):
         self.create_order()

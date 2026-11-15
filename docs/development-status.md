@@ -12,6 +12,46 @@ Open **Orders** in the sidebar, then **Create order**.
 - Type into the customer field and click a filtered result, or use the arrow keys
   and Enter. **Create New** opens a customer modal with **Use customer** and
   **Cancel** actions. New customers are saved together with the order.
+- In Draft, **Edit Customer** opens the selected customer's details in the same
+  modal. **Save customer** updates the existing customer immediately without
+  saving, submitting, or reloading the order. The selected label and Customer
+  Notes refresh, while unsaved order fields stay intact. Its owner and identity
+  are retained. Cancel/Escape discards edits that have not been saved. Customer
+  creation still saves with the order. Customer-change and order-edit/create
+  permissions are required; editing remains unavailable after submission.
+- Customer forms, Django admin, and the order modal require First name, Last
+  name, Email, and Primary phone. The app forms mark these with *. Email is
+  trimmed and lowercased on save, and a database constraint rejects case/whitespace
+  duplicates. Editing a customer can retain its own email. Duplicate-save races
+  return an email error without partial customer/order changes.
+- The customer directory displays an Orders count instead of Owner. Existing
+  customer forms show Total Orders and Open Orders with View Orders. Total
+  includes every order stage; Open includes Draft and In Progress, independently
+  of payment or collection. View Orders and the directory count link open the
+  orders list with an exact customer filter, retained during filtering/paging.
+  Links respect order-view permission. Creator/owner metadata is retained
+  internally, with Owner removed from customer-facing lists and the admin list.
+- Existing customer edit pages show Archive or Restore beside Save, with a
+  confirmation modal. Archiving retains the customer, email, notes, order counts,
+  and history. The directory defaults to Active, with Archived and All filters;
+  archived records remain directly accessible and can be restored. These actions
+  require customer-change permission, POST, and CSRF.
+- Archived customers are excluded from new-order choices on both the client and
+  server. Existing orders retain their customer and can continue through every
+  stage. A saved order's current archived customer remains available for display
+  and saving; it is not offered in the search dropdown. Archive status is
+  independent of order/payment/collection status. Emails stay unique across
+  active and archived customers, and contact saves do not reset archive status.
+- Customer edit pages without linked orders show a smaller Delete button beside Save. A
+  separate Delete customer modal names the persisted customer and focuses Cancel.
+  Confirming sends a CSRF-protected delete request; Cancel or Escape returns to
+  the form. Required-field errors do not block deletion. Customers referenced by
+  orders remain protected; Delete is hidden when orders exist. New customer forms
+  do not show Delete, Archive, or Restore.
+- Customer Notes appear as read-only plain text below customer selection in all
+  order stages. They use the current customer record, remain separate from Order
+  Notes, and update on selection or inline creation. Cancelling inline customer
+  edits restores the previous notes; line breaks are preserved.
 - Add products as individual order items with optional notes, a deadline date,
   and optional deadline time. Item descriptions and product quantities are not
   part of the form.
@@ -227,7 +267,7 @@ Migration 0009 preserves existing orders and adds safe defaults of not collected
 and Unpaid. The allowed status/payment values are validated in the form and
 database. Revision checking protects all three fields from stale saves.
 
-Focused validation includes 74 order tests for stage-specific locks, status changes,
+Focused validation includes 102 order tests for stage-specific locks, status changes,
 submission, required assignment before completion, server-enforced locks,
 returning to Draft, permissions, stale edits, filters, and pagination. Locked
 orders retain their captured services and prices even after catalog links change.
@@ -235,6 +275,10 @@ orders retain their captured services and prices even after catalog links change
 Migrations 0009 and 0010 are applied locally. Migration 0010 extends payment choices
 and the database constraint to accept Refunded, preserving all existing orders and
 charges. The order list also correctly handles orders without an assigned user.
+Migration 0011 is also applied locally. It makes customer contact fields required and adds the normalized
+email uniqueness constraint, preserving customer and order records. Before
+applying it locally, all 11 customers had the required fields and no duplicate
+emails; no customer data needed to be changed.
 
 Additional action checks cover draft deletion and its dependent rows, retained
 customer/catalog records, deletion permissions, CSRF, stale-delete conflicts, and
@@ -242,7 +286,11 @@ the buttons available in each stage, rejected
 out-of-stage actions, forged status submissions, duplicate Submit requests, and
 Save preserving the current status.
 
-All 77 order/migration tests pass. Rendered HTML checks confirm enabled
+Customer/order validation and migration tests cover
+required fields and markers,
+case-insensitive email uniqueness, retaining a customer's own email, simultaneous
+save conflicts, read-only customer notes, and preservation of existing records.
+Rendered HTML checks confirm enabled
 In Progress deadlines/notes and disabled commercial controls, including parent
 fieldset behavior. Tests cover price preservation after catalog changes, invalid
 deadlines, stale edits, row ownership, clearing optional details, and locks after
@@ -257,6 +305,39 @@ Seven JavaScript confirmation tests pass with
 `node --test crm/tests/js/order-confirmation.test.cjs`, covering immediate Save,
 top/bottom submitters, cancellation/Escape, revalidation, Delete draft, Discard,
 and already-cancelled events. Rendered stage-control checks also pass.
+Twelve customer-selector tests also pass with
+`node --test crm/tests/js/order-customer.test.cjs`, covering notes display and
+selection changes, inline creation/editing, prefilling, cancellation restoration,
+duplicate emails, independent saves, request failures, and duplicate-click
+prevention. Server tests also cover edit permission, Draft-only editing,
+required fields, retaining the customer's own email, preserving owner/charges,
+and rolling back customer edits after stale orders or duplicate-save conflicts.
+Independent save requests require POST and CSRF, reject stale/submitted orders,
+and do not change order revisions, timestamps, items, or charges. An unchanged
+conditional revision write locks the draft during the customer transaction so a
+concurrent submission cannot bypass the stage rule. No additional schema
+migration is needed for inline editing.
+
+Customer deletion checks pass: 16 focused Django tests cover the customer forms,
+CSRF, confirmation markup, and linked-order protection; four JavaScript checks
+cover modal opening, cancellation/Escape focus restoration, and creation forms
+without Delete, including Archive/Restore dialogs when Delete is hidden.
+
+All 118 customer/order tests and 11 customer-modal JavaScript tests pass after
+adding counts, exact-customer filtering, and repairing wrapped order-template
+tags. Counts cover all stages and zero-order customers; filters handle duplicate
+names, invalid IDs, additional filters, permissions, and pagination. No schema
+change was required for the counts/filtering milestone. Keep Django template tags (`{% ... %}` and `{{ ... }}`) on one
+line when formatting HTML; wrapping the contents prevents correct parsing.
+
+Migration 0012 adds indexed `Customer.is_archived`, defaulting existing customers
+to active and retaining all prior data. It is applied locally; all 11 existing
+customers remain active, and customer/order/item/charge data was verified
+unchanged. Other checkouts apply it with `python manage.py migrate`.
+Archive checks cover active/archived/all filtering, restoration, permissions,
+CSRF, preserved orders/counts, archived email uniqueness, existing-order saves,
+blocked new selections, and an archive occurring between validation and saving.
+All 184 Django tests and 23 JavaScript checks pass for the archive milestone.
 
 ## Subsequent milestones
 

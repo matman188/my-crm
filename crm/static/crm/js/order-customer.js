@@ -13,13 +13,40 @@
     const badge = editor.querySelector("[data-new-customer-badge]");
     const dialog = editor.querySelector("[data-customer-dialog]");
     const newFields = [...dialog.querySelectorAll("input, select, textarea")];
+    const customerNotes = editor.querySelector("[data-customer-notes]");
+    const newNotes = editor.querySelector('[name="customer-notes"]');
+    const newEmail = editor.querySelector('[name="customer-email"]');
+    const editButton = editor.querySelector("[data-edit-customer]");
+    const dialogTitle = dialog.querySelector("[data-customer-dialog-title]");
+    const useButton = dialog.querySelector("[data-use-customer]");
+    const cancelButton = dialog.querySelector("[data-cancel-customer]");
+    const dialogHelp = dialog.querySelector("[data-customer-dialog-help]");
+    const saveErrors = dialog.querySelector("[data-customer-save-errors]");
     let matches = [];
     let activeIndex = -1;
     let snapshot = null;
+    let editingCustomerId = mode.value === "edit" ? customerId.value : "";
+    let savingCustomer = false;
+
+    function updateCustomerNotes() {
+        const selected = customers.find(customer => String(customer.id) === customerId.value);
+        const notes = mode.value === "new" || mode.value === "edit" ? newNotes.value : selected?.notes;
+        customerNotes.textContent = notes || "No customer notes.";
+    }
+
+    function validateNewEmail() {
+        const email = newEmail.value.trim().toLowerCase();
+        const duplicate = customers.some(customer => String(customer.id) !== editingCustomerId && customer.email.trim().toLowerCase() === email);
+        newEmail.setCustomValidity(email && duplicate ? "A customer with this email already exists." : "");
+    }
+    newEmail.addEventListener("input", validateNewEmail);
 
     function enableNewFields(enabled) {
         newFields.forEach(field => { field.disabled = !enabled; });
-        badge.hidden = mode.value !== "new";
+        badge.hidden = mode.value !== "new" && mode.value !== "edit";
+        badge.textContent = mode.value === "edit" ? "Customer changes" : "New customer";
+        if (editButton) editButton.disabled = mode.value !== "new" && !customers.some(customer => String(customer.id) === customerId.value);
+        updateCustomerNotes();
     }
 
     function closeList() {
@@ -31,7 +58,7 @@
 
     function showMatches(showAll = false) {
         const words = showAll ? [] : input.value.trim().toLocaleLowerCase().split(/\s+/);
-        const filtered = customers.filter(customer => words.every(word => customer.label.toLocaleLowerCase().includes(word)));
+        const filtered = customers.filter(customer => !customer.is_archived && words.every(word => customer.label.toLocaleLowerCase().includes(word)));
         matches = filtered.slice(0, 20);
         activeIndex = -1;
         input.removeAttribute("aria-activedescendant");
@@ -60,6 +87,7 @@
     function chooseCustomer(customer) {
         customerId.value = String(customer.id);
         mode.value = "existing";
+        editingCustomerId = "";
         input.value = customer.label;
         input.setCustomValidity("");
         enableNewFields(false);
@@ -74,6 +102,7 @@
     input.addEventListener("input", () => {
         customerId.value = "";
         mode.value = "existing";
+        editingCustomerId = "";
         enableNewFields(false);
         input.setCustomValidity("Choose a customer from the list or create a new one.");
         showMatches();
@@ -109,13 +138,26 @@
         if (!picker.contains(event.target)) closeList();
     });
 
-    function openDialog() {
+    function openDialog(edit = false) {
         snapshot = {
             values: newFields.map(field => field.value),
             mode: mode.value,
             customer: customerId.value,
             label: input.value,
+            editingCustomerId,
         };
+        const selected = customers.find(customer => String(customer.id) === customerId.value);
+        const editingNew = edit && mode.value === "new";
+        editingCustomerId = edit && !editingNew && selected ? String(selected.id) : "";
+        if (editingCustomerId && mode.value !== "edit") {
+            newFields.forEach(field => { field.value = selected.details[field.name.replace(/^customer-/, "")] || ""; });
+        } else if (!editingCustomerId && mode.value !== "new") {
+            newFields.forEach(field => { field.value = ""; });
+        }
+        dialogTitle.textContent = editingCustomerId ? "Edit Customer" : "New customer";
+        useButton.textContent = editingCustomerId ? "Save customer" : "Use customer";
+        dialogHelp.textContent = editingCustomerId ? "Saving updates this customer immediately." : "New customers are saved with the order.";
+        saveErrors.hidden = true;
         closeList();
         enableNewFields(true);
         dialog.showModal();
@@ -123,26 +165,84 @@
     }
 
     function cancelDialog() {
+        if (savingCustomer) return;
         if (snapshot) {
             newFields.forEach((field, index) => { field.value = snapshot.values[index]; });
             mode.value = snapshot.mode;
             customerId.value = snapshot.customer;
             input.value = snapshot.label;
+            editingCustomerId = snapshot.editingCustomerId;
         }
+        validateNewEmail();
         if (mode.value === "new" && !newFields.every(field => field.checkValidity())) {
             mode.value = "existing";
             customerId.value = "";
             input.value = "";
         }
-        enableNewFields(mode.value === "new");
+        if (mode.value === "edit" && !newFields.every(field => field.checkValidity())) {
+            const selected = customers.find(customer => String(customer.id) === customerId.value);
+            mode.value = "existing";
+            editingCustomerId = "";
+            input.value = selected?.label || "";
+        }
+        enableNewFields(mode.value === "new" || mode.value === "edit");
         dialog.close();
         snapshot = null;
     }
 
-    function useCustomer() {
+    async function saveCustomer() {
+        const selected = customers.find(customer => String(customer.id) === editingCustomerId);
+        const body = new URLSearchParams();
+        newFields.forEach(field => body.append(field.name, field.value));
+        body.append("revision", editor.querySelector('[name="revision"]').value);
+        savingCustomer = true;
+        useButton.disabled = true;
+        useButton.textContent = "Saving…";
+        cancelButton.disabled = true;
+        newFields.forEach(field => { field.disabled = true; });
+        saveErrors.hidden = true;
+        try {
+            const response = await fetch(selected.save_url, {
+                method: "POST",
+                credentials: "same-origin",
+                headers: { "X-CSRFToken": editor.querySelector('[name="csrfmiddlewaretoken"]').value },
+                body,
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                const errors = Object.entries(result.errors || {}).flatMap(([name, errors]) =>
+                    errors.map(error => `${name === "__all__" ? "" : name.replaceAll("_", " ") + ": "}${error.message}`));
+                saveErrors.textContent = result.message || errors.join("\n") || "Could not save the customer. Please try again.";
+                saveErrors.hidden = false;
+                return;
+            }
+            Object.assign(selected, result.customer);
+            chooseCustomer(selected);
+            snapshot = null;
+            dialog.close();
+            status.textContent = "Customer saved.";
+        } catch {
+            saveErrors.textContent = "Could not confirm the customer save. Please try again.";
+            saveErrors.hidden = false;
+        } finally {
+            savingCustomer = false;
+            useButton.disabled = false;
+            useButton.textContent = "Save customer";
+            cancelButton.disabled = false;
+            if (dialog.open) newFields.forEach(field => { field.disabled = false; });
+        }
+    }
+
+    async function useCustomer() {
+        if (savingCustomer) return;
+        validateNewEmail();
         const invalid = newFields.find(field => !field.checkValidity());
         if (invalid) {
             invalid.reportValidity();
+            return;
+        }
+        if (editingCustomerId) {
+            await saveCustomer();
             return;
         }
         const first = editor.querySelector('[name="customer-first_name"]').value.trim();
@@ -157,7 +257,8 @@
         status.textContent = "New customer selected.";
     }
 
-    editor.querySelector("[data-create-customer]")?.addEventListener("click", openDialog);
+    editor.querySelector("[data-create-customer]")?.addEventListener("click", () => openDialog());
+    editButton?.addEventListener("click", () => openDialog(true));
     dialog.querySelector("[data-cancel-customer]").addEventListener("click", cancelDialog);
     dialog.querySelector("[data-use-customer]").addEventListener("click", useCustomer);
     dialog.addEventListener("cancel", event => {
@@ -171,7 +272,7 @@
         }
     });
 
-    if (mode.value === "new") {
+    if (mode.value === "new" || mode.value === "edit") {
         const first = editor.querySelector('[name="customer-first_name"]').value;
         const last = editor.querySelector('[name="customer-last_name"]').value;
         input.value = `${first} ${last}`.trim();
@@ -179,6 +280,6 @@
         const selected = customers.find(customer => String(customer.id) === customerId.value);
         if (selected) input.value = selected.label;
     }
-    enableNewFields(mode.value === "new");
-    if (mode.value === "new" && dialog.dataset.hasErrors === "true") openDialog();
+    enableNewFields(mode.value === "new" || mode.value === "edit");
+    if ((mode.value === "new" || mode.value === "edit") && dialog.dataset.hasErrors === "true") openDialog(mode.value === "edit");
 })();

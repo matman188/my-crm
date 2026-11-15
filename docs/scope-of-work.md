@@ -36,6 +36,10 @@ customer's physical items; its invoice is a separate billing record.
 | Payments in the first version | Full payment only. Deposits, partial payments, and payment instalments are outside the initial scope. |
 | Business setup | One business per installation initially. The software should be reusable for other businesses through configuration. |
 | Customer selection | A single searchable dropdown shows clickable matches. A Create New button opens a customer modal while retaining the order being entered. |
+| Customer editing from orders | In Draft, Edit customer opens a prefilled modal for the selected customer. Save customer updates that shared customer immediately, independently of order saving, and refreshes the label and notes without losing unsaved order edits. Customer-change and order-edit/create permissions are required. Cancel/Escape discards unsaved modal edits. |
+| Customer details | First name, Last name, Email, and Primary phone are required and marked with *. Email is unique across customers, ignoring surrounding whitespace and case. The same rules apply in the customer pages, admin, and order modal. |
+| Customer Notes on orders | Show the selected customer's current notes as read-only text on the order, including line breaks, separately from order/item/service notes. Update the display when the selected customer changes. |
+| Customer archiving | Archive instead of deleting customers with linked orders. Preserve customer details and history; hide archived customers from new-order selection and default directory results. Offer Active/Archived/All directory filters and Restore. Existing orders retain their customer and remain usable; archived emails stay reserved. |
 | Product units (D01) | Whether a product represents a shoe, pair, or another unit depends on product setup. No shoe-specific unit is imposed by the order workflow. |
 | Services per item | An item may have multiple services, including repeated selections of the same service. Each occurrence is charged separately. |
 | Quantities (D03) | Quantities are entered only on services. Each charge is service quantity × unit price. Products have no separate quantity or item label/description field. |
@@ -122,6 +126,47 @@ There is no separate Closed status or payment-dependent closure step.
 - Use one customer field that filters a dropdown as the operator types. Provide
   a Create New button above it to open customer details in a modal, with clear
   apply/cancel actions that preserve the draft.
+- Offer Edit customer for the selected customer while Draft, with the existing
+  details prefilled. Save customer updates the shared customer immediately without
+  saving/submitting or reloading the order, preserving its identity and owner.
+  Refresh the displayed label and Customer Notes while retaining unsaved order
+  fields. Respect customer-change permission and the existing locks after
+  submission. Required fields and unique email validation must work for edits,
+  excluding that customer's own email. Reject stale/submitted order contexts
+  before changing the customer. Save failures remain in the modal with entered
+  values available for correction/retry. New customer creation remains tied to
+  saving the order.
+- Require First name, Last name, Email, and Primary phone in customer creation
+  and editing, including the order modal. Mark required fields with * and validate
+  them in both the browser and server. Keep company, secondary phone, and notes
+  optional. Reject duplicate email addresses regardless of case or surrounding
+  whitespace, including concurrent saves; a customer can retain its own email.
+- Show a smaller Delete button beside Save on existing customer edit pages.
+  Confirm deletion in an app-styled modal identifying the customer, with Cancel
+  focused initially. Cancel or Escape must leave the form unchanged. Submit
+  deletion separately from customer edits so incomplete fields do not prevent
+  it, and retain protection for customers linked to service orders.
+- Offer Archive/Restore on customer forms with a confirmation modal, customer-change
+  permission, POST, and CSRF. Preserve the customer, notes, order references, and
+  counts. Hide Delete for linked customers and keep the database deletion
+  protection. Default the directory to active customers and offer Archived/All
+  filters with search. Restoration makes the same record available again.
+- Exclude archived customers from new-order selection in the browser and server,
+  including an archive between validation and saving. Existing orders can retain
+  their current archived customer and continue through the workflow. Keep all
+  customers available to historical order filters; maintain email uniqueness
+  across archive status. Ordinary contact edits must not reset archive status.
+- Show Customer Notes directly below the customer selection on every order stage.
+  These are the current customer-record instructions, not an editable order field
+  or an invoice snapshot. Preserve line breaks and display notes as plain text.
+  Keep this display in sync when choosing or creating a customer, and restore it
+  when customer creation is cancelled. Keep customer notes internal.
+- Replace the customer-directory Owner column with an Orders count. On existing
+  customer forms show Total Orders and Open Orders, where Open means Draft or
+  In Progress. Include View Orders to list all orders for that exact customer,
+  retaining the customer filter when filtering or paging. Do not match customers
+  by name or email text; identical names must remain separate. Respect order-view
+  permission on navigation links.
 - Keep labels brief. Put Order Details at the top and label the assignment field
   Assigned To. Above it, show the current status in a labelled badge near the
   order heading and show the total with its currency. Keep header and bottom
@@ -156,9 +201,8 @@ There is no separate Closed status or payment-dependent closure step.
   issued invoice data, and must be protected against stale saves.
 - Allow draft orders to be saved and resumed. Confirmation requires a customer,
   at least one item, required item details and deadlines, and valid service prices.
-- Use the customer's email for invoice delivery when available. A missing email
-  must not prevent order creation, confirmation, or printing; email delivery must
-  request a valid address before sending.
+- Use the customer's required email for invoice delivery and revalidate the
+  recipient before sending. Printing does not depend on email delivery succeeding.
 
 ### 5.2 Products and physical order items
 
@@ -584,3 +628,8 @@ requirements so planned features are not mistaken for delivered functionality.
 | 15 November 2026 | Replaced the four-stage banner with a labelled current-status badge near the order heading and a labelled total with currency. Header and bottom totals update together while editing; existing orders open through View and use a neutral Order heading. |
 | 15 November 2026 | Made Cancelled orders read-only except for Order Notes, so cancellation reasons can be added. Added Save notes and locked Assigned To, Assign to Me, and Payment status; retained Restore to draft with source-stage locks and stale-save protection. |
 | 15 November 2026 | Added Refunded as a manual payment status, including the form, list badge, and filter. Retained stage field locks and captured order charges; migration 0010 extends the database constraint without changing existing values. Refund transactions remain later work. |
+| 15 November 2026 | Required First name, Last name, Email, and Primary phone on customer forms and the order modal, with * markers. Added case-insensitive, trimmed email uniqueness and duplicate-save errors. Orders now show the selected customer's current notes separately from order notes. Migration 0011 preserves existing customer/order data; this supersedes the earlier allowance for customers without email. |
+| 15 November 2026 | Added Edit customer to Draft orders using a prefilled modal. Edits to the existing customer save atomically with the order, preserve identity/owner, enforce customer-change permission and email uniqueness, and support Cancel/Escape without losing order edits. Submitted orders keep customer editing locked. |
+| 15 November 2026 | Changed Edit customer to save immediately through Save customer in the modal, independently of the order. The label and Customer Notes update without a reload; unsaved order fields and saved order revisions/items/charges remain unchanged. Retained permission, CSRF, Draft-stage, stale-context, and unique-email checks. |
+| 15 November 2026 | Removed Owner from customer screens, added the directory Orders count, and added Total Orders/Open Orders with View Orders on customer forms. Open means Draft or In Progress; order navigation uses an exact customer filter retained during filtering and pagination. Retained internal ownership metadata. |
+| 15 November 2026 | Added reversible customer archiving with Archive/Restore confirmation modals and Active/Archived/All directory filters. Archived customers are hidden from new-order choices while existing orders and counts remain intact. Linked customers remain protected from deletion; their Delete controls are hidden. Migration 0012 defaults all existing customers to active. |

@@ -18,7 +18,8 @@ from crm.order_workflow import ORDER_ACTIONS, SAVE_LABELS
 
 
 class CustomerChoiceField(forms.ModelChoiceField):
-    def label_from_instance(self, customer):
+    @staticmethod
+    def label_from_instance(customer):
         details = " · ".join(
             filter(
                 None,
@@ -30,7 +31,8 @@ class CustomerChoiceField(forms.ModelChoiceField):
                 ],
             )
         )
-        return f"{customer} — {details}" if details else str(customer)
+        name = f"{customer} (Archived)" if customer.is_archived else str(customer)
+        return f"{name} — {details}" if details else name
 
 
 class AssignedToChoiceField(forms.ModelChoiceField):
@@ -47,6 +49,7 @@ class ServiceOrderForm(forms.ModelForm):
         choices=[
             ("existing", "Choose an existing customer"),
             ("new", "Create a new customer"),
+            ("edit", "Edit the selected customer"),
         ],
         widget=forms.HiddenInput,
         initial="existing",
@@ -74,9 +77,12 @@ class ServiceOrderForm(forms.ModelForm):
             selected_action["target"] if selected_action else self.original_status
         )
         self.invalid_action = self.action != "save" and selected_action is None
-        self.fields["customer"].queryset = Customer.objects.order_by(
-            "first_name", "last_name", "pk"
-        )
+        available_customers = Q(is_archived=False)
+        if self.instance.pk and self.instance.customer_id:
+            available_customers |= Q(pk=self.instance.customer_id)
+        self.fields["customer"].queryset = Customer.objects.filter(
+            available_customers
+        ).order_by("first_name", "last_name", "pk")
         available_users = get_user_model().objects.filter(is_active=True)
         if self.instance.assigned_to_id:
             available_users = get_user_model().objects.filter(
@@ -123,7 +129,9 @@ class ServiceOrderForm(forms.ModelForm):
             "status" in self.data and self.data["status"] != self.original_status
         ):
             self.add_error(None, "Use the order action buttons to change the status.")
-        if data.get("customer_mode") == "existing" and not data.get("customer"):
+        if data.get("customer_mode") in ("existing", "edit") and not data.get(
+            "customer"
+        ):
             self.add_error("customer", "Choose a customer or create a new one.")
         if self.target_status == ServiceOrder.Status.COMPLETE and not data.get(
             "assigned_to"
@@ -149,6 +157,11 @@ class ServiceOrderForm(forms.ModelForm):
 
 
 class OrderFilterForm(forms.Form):
+    customer = CustomerChoiceField(
+        queryset=Customer.objects.order_by("first_name", "last_name", "pk"),
+        required=False,
+        empty_label="All customers",
+    )
     q = forms.CharField(
         label="Search",
         required=False,
@@ -315,6 +328,7 @@ class OrderEditor:
             self.instance.pk and self.instance.status != ServiceOrder.Status.DRAFT
         )
         self.original_status = self.instance.status
+        self.original_customer_id = self.instance.customer_id
         self.details_editable = bool(
             self.instance.pk and self.original_status == ServiceOrder.Status.IN_PROGRESS
         )
@@ -325,8 +339,21 @@ class OrderEditor:
         self.new_customer = bool(
             not self.locked and data and data.get("customer_mode") == "new"
         )
+        self.editing_customer = bool(
+            not self.locked and data and data.get("customer_mode") == "edit"
+        )
+        customer_instance = None
+        if self.editing_customer:
+            try:
+                customer_instance = self.form.fields["customer"].clean(
+                    self.form["customer"].value()
+                )
+            except ValidationError:
+                pass  # The order form reports an invalid customer selection.
         self.customer_form = CustomerForm(
-            data if self.new_customer else None, prefix="customer"
+            data if self.new_customer or self.editing_customer else None,
+            instance=customer_instance,
+            prefix="customer",
         )
         item_data = None if self.locked else data
         self.items = ItemFormSet(item_data, instance=self.instance, prefix="items")
@@ -401,10 +428,18 @@ class OrderEditor:
             for detail_form in self.detail_forms:
                 valid = detail_form.is_valid() and valid
             return valid
-        if self.new_customer:
-            if not self.user.has_perm("crm.add_customer"):
+        if self.new_customer or self.editing_customer:
+            permission = (
+                "crm.add_customer" if self.new_customer else "crm.change_customer"
+            )
+            if not self.user.has_perm(permission):
                 self.form.add_error(
-                    "customer_mode", "You do not have permission to create customers."
+                    "customer_mode",
+                    (
+                        "You do not have permission to create customers."
+                        if self.new_customer
+                        else "You do not have permission to edit customers."
+                    ),
                 )
                 valid = False
             valid = self.customer_form.is_valid() and valid
@@ -417,6 +452,16 @@ class OrderEditor:
     @transaction.atomic
     def save(self):
         order = self.form.save(commit=False)
+        if not self.new_customer and (
+            not order.pk or order.customer_id != self.original_customer_id
+        ):
+            available = Customer.objects.filter(
+                pk=order.customer_id, is_archived=False
+            ).update(updated_at=F("updated_at"))
+            if not available:
+                raise OrderConflict(
+                    "This customer was archived or removed. Choose an active customer before saving."
+                )
         if order.pk:
             revision = self.form.cleaned_data["revision"]
             updated = ServiceOrder.objects.filter(
@@ -430,10 +475,13 @@ class OrderEditor:
         else:
             order.created_by = self.user
         order.status = self.form.target_status
-        if self.new_customer:
+        if self.new_customer or self.editing_customer:
             customer = self.customer_form.save(commit=False)
-            customer.owner = self.user
-            customer.save()
+            if self.new_customer:
+                customer.owner = self.user
+                customer.save()
+            else:
+                customer.save(update_fields=[*CustomerForm.Meta.fields, "updated_at"])
             order.customer = customer
         order.save()
 
