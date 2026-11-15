@@ -16,6 +16,7 @@ function setup() {
             this.validationMessage = "";
         }
         addEventListener(name, listener) { (this.handlers[name] ||= []).push(listener); }
+        dispatchEvent(event) { return this.fire(event.type); }
         fire(name, extra = {}) {
             const event = { target: this, preventDefault() {}, ...extra };
             return Promise.all((this.handlers[name] || []).map(listener => listener(event)));
@@ -91,7 +92,8 @@ function setup() {
         return { ok: true, json: async () => ({ customer: { ...original, name, label: name, details, email: details.email, notes: details.notes } }) };
     };
     const fetch = (url, options) => { requests.push({ url, options }); return responder(url, options); };
-    vm.runInNewContext(script, { document, fetch, URLSearchParams });
+    const notifications = [];
+    vm.runInNewContext(script, { document, fetch, URLSearchParams, Event, window: { crmUX: { notify: message => notifications.push(message) } } });
     const choose = id => list.fire("click", { target: { closest: () => ({ dataset: { customerId: String(id) } }) } });
     const fill = (changes = {}) => {
         const values = { first_name: "New", last_name: "Customer", email: "new@example.com", primary_phone: "0123456789", notes: "New customer instructions", ...changes };

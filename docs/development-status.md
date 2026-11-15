@@ -90,6 +90,9 @@ Open **Orders** in the sidebar, then **Create order**.
   cancellation reason, with a Save notes button. Assigned To, Assign to Me, and
   Payment status are editable only in In Progress and Complete. Collected is
   editable only in Complete.
+- Order Notes can be updated or cleared in every state, including Complete,
+  without reopening the order. Complete uses Save changes for notes, collection
+  and payment; deadline and item/service note locks still apply.
 - Payment status supports Unpaid, Paid, and Refunded. Refunded is a manual status
   indicator, with a distinct badge and list filter; it preserves order charges,
   totals, work status, and collection state.
@@ -103,6 +106,10 @@ Open **Orders** in the sidebar, then **Create order**.
 - Save and edit orders in every status using their `SO-000001` style references.
   Search by reference, customer, assigned user, or order notes, and filter by Status,
   Collected, and Payment status. Filters are retained when paging through results.
+- The Orders list uses its main Search field for customer names (including full
+  names), email, company, and phone numbers. It has no separate customer dropdown.
+  View Orders links retain an exact customer-ID filter as a hidden field, with an
+  Orders for label, so customer history stays scoped while filtering and paging.
 
 ### Pricing and service applicability
 
@@ -341,7 +348,14 @@ All 184 Django tests and 23 JavaScript checks pass for the archive milestone.
 
 ## Subsequent milestones
 
+The accepted QOL pass adds shared form protection and confirmations, order work
+queues/deadline sorting, dashboard workload counts, list return navigation,
+duplicate items/deadline bulk updates/undo, catalogue archiving, staff
+deactivation/deletion protection, contact links and directory pagination. See
+[QOL implementation](qol-improvements.md) for the exact queue definitions,
+behaviour, migration and verification details, and browser-tool setup.
+
 Invoice/PDF/email generation, full-payment records, finer permissions and change
-history, and dashboards/reports remain to be implemented. The planned invoice
+history, and financial dashboards/reports remain to be implemented. The planned invoice
 confirmation action will integrate with the Draft-to-In Progress transition.
 Currently, saving or changing an order's status does not issue an invoice.

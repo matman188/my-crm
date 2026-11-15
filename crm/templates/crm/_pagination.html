@@ -1,0 +1,7 @@
+{% if page_obj.has_other_pages %}
+<nav class="button-row pagination" aria-label="List pages">
+    {% if page_obj.has_previous %}<a class="button-link" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">Previous</a>{% endif %}
+    <span class="meta">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }} · {{ page_obj.paginator.count }} records</span>
+    {% if page_obj.has_next %}<a class="button-link" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}page={{ page_obj.next_page_number }}">Next</a>{% endif %}
+</nav>
+{% endif %}

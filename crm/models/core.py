@@ -13,6 +13,7 @@ class SystemSettings(models.Model):
     )
 
     company_name = models.CharField(max_length=150, default="My CRM")
+    business_timezone = models.CharField(max_length=64, default="Africa/Johannesburg")
     default_currency = models.CharField(
         max_length=3,
         choices=CURRENCY_CHOICES,

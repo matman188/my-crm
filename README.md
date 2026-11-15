@@ -13,6 +13,14 @@ Service orders with Status, Collected, and Payment status are available from
 [development status](docs/development-status.md) for the implemented workflow,
 pricing rules, setup instructions, and remaining milestones.
 
+The [QOL implementation notes](docs/qol-improvements.md) describe work queues,
+archiving, safer forms, order-entry shortcuts and browser-tool setup.
+
+For development checks, run `python manage.py test crm.tests --noinput`.
+Install Node test dependencies with `npm ci`, then run `npm test` for JavaScript
+checks; the Django suite also uses them to exercise rendered order forms. Node
+dependencies are only needed for these development checks.
+
 ## Stack
 
 - Python

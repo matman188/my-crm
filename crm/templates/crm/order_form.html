@@ -22,7 +22,7 @@
     </div>
     <div class="order-header-controls">
         {% include 'crm/_order_actions.html' with action_group_label='Top order actions' %}
-        <a class="order-back-link" href="{% url 'orders' %}">Back to orders</a>
+        <a class="order-back-link" href="{% if return_to %}{{ return_to }}{% else %}{% url 'orders' %}{% endif %}">Back to orders</a>
     </div>
 </div>
 <noscript>
@@ -36,12 +36,13 @@
     {{ editor.form.customer_mode }}
     {{ editor.form.customer }}
     <p class="non-field-errors" data-editor-feedback role="alert" hidden></p>
+    <div class="removal-feedback" data-removal-feedback hidden><span data-removal-message></span> <button class="button secondary" type="button" data-undo-removal>Undo removal</button></div>
     {% if editor.form.non_field_errors %}<div class="non-field-errors" role="alert">{{ editor.form.non_field_errors }}
     </div>{% endif %}
     {% if editor.form.errors or editor.items.errors or editor.general.errors or editor.detail_errors %}
     <p class="non-field-errors" role="alert">Check the fields below, then save again.</p>
     {% endif %}
-    <p class="meta order-status-help">{% if order.status == 'draft' %}Save your changes or submit the order to start work.{% elif order.status == 'in_progress' %}Deadlines and internal notes can be updated. Products and services are locked. Assign a user before marking the order Complete.{% elif order.status == 'complete' %}Work is complete. Collection and payment can still be updated.{% else %}This order is cancelled. Only Order Notes can be updated. Restore to Draft to edit the order again.{% endif %}</p>
+    <p class="meta order-status-help">{% if order.status == 'draft' %}Save your changes or submit the order to start work.{% elif order.status == 'in_progress' %}Deadlines and internal notes can be updated. Products and services are locked. Assign a user before marking the order Complete.{% elif order.status == 'complete' %}Work is complete. Order Notes, collection and payment can still be updated.{% else %}This order is cancelled. Only Order Notes can be updated. Restore to Draft to edit the order again.{% endif %}</p>
     <section class="panel">
         <h3>Order Details</h3>
         <div class="form-layout">
@@ -90,6 +91,7 @@
         <span class="role-badge" data-new-customer-badge hidden>New customer</span>
         <span id="customer-search-status" class="visually-hidden" role="status" data-customer-search-status></span>
         {{ editor.form.customer.errors }}{{ editor.form.customer_mode.errors }}
+        <div class="contact-links" data-customer-contact aria-label="Customer contact"></div>
         <div class="customer-order-notes" aria-labelledby="customer-notes-heading">
             <h4 id="customer-notes-heading">Customer Notes</h4>
             <p data-customer-notes>{{ customer_notes|default:'No customer notes.' }}</p>
@@ -97,6 +99,7 @@
     </fieldset>
     <fieldset class="order-fieldset" {% if editor.locked and not editor.details_editable %} disabled{% endif %}>
         <h3>Items</h3>
+        {% if not editor.locked or editor.details_editable %}<div class="bulk-deadline"><label>Due date for all items <input type="date" data-bulk-date></label><label>Time (optional) <input type="time" data-bulk-time></label><button class="button secondary" type="button" data-apply-deadline>Apply to all items</button></div>{% endif %}
         {{ editor.items.management_form }}
         {% if editor.items.non_form_errors %}<div class="non-field-errors">{{ editor.items.non_form_errors }}</div>{% endif %}
         <div class="order-items" data-item-rows>

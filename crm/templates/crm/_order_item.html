@@ -1,7 +1,7 @@
-<section class="panel order-item" data-order-item data-form-prefix="{{ item_form.prefix }}">
+<section class="panel order-item" data-order-item data-form-prefix="{{ item_form.prefix }}" data-original-product="{{ item_form.original_product_id|default:'' }}" data-product-archived="{{ item_form.instance.product.is_archived|yesno:'true,false' }}">
     <div class="order-row-footer">
         <h3 data-item-heading>Item</h3>
-        <button class="button secondary" type="button" data-remove-item{% if editor.locked %} disabled{% endif %}>Remove item</button>
+        <div class="button-row"><button class="button secondary" type="button" data-duplicate-item{% if editor.locked %} disabled{% endif %}>Duplicate item</button><button class="button secondary" type="button" data-remove-item{% if editor.locked %} disabled{% endif %}>Remove item</button></div>
     </div>
     <div class="form-layout" data-item-fields>
         {% include 'crm/_order_fields.html' with form=item_form %}

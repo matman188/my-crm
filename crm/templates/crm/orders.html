@@ -9,8 +9,13 @@
     <div><h2>Orders</h2><p class="meta">{{ page_obj.paginator.count }} order{{ page_obj.paginator.count|pluralize }}</p></div>
     {% if perms.crm.add_serviceorder %}<a class="button-link" href="{% url 'create_order' %}">Create order</a>{% endif %}
 </div>
+{% if customer_filter %}<p class="meta">Orders for <strong>{{ customer_filter }}</strong></p>{% endif %}
+<nav class="quick-views" aria-label="Order work queues">
+    {% for view in quick_views %}<a class="quick-view{% if view.active %} is-active{% endif %}" href="{{ view.url }}"{% if view.active %} aria-current="page"{% endif %}>{{ view.label }} <span>{{ view.count }}</span></a>{% endfor %}
+</nav>
 <form method="get" class="order-filters">
-    {% for field in filter_form %}
+    {% for field in filter_form.hidden_fields %}{{ field }}{{ field.errors }}{% endfor %}
+    {% for field in filter_form.visible_fields %}
         <div class="form-field{% if field.name == 'q' %} order-filter-search{% endif %}">
             <label for="{{ field.id_for_label }}">{{ field.label }}</label>
             {{ field }}{{ field.errors }}
@@ -25,13 +30,13 @@
         <tbody>
         {% for order in page_obj %}
             <tr>
-                <td><strong>{{ order.reference }}</strong><div class="meta">{{ order.created_at|date:'d M Y' }}</div></td>
+                <td><strong>{{ order.reference }}</strong><div class="meta">{{ order.created_at|date:'d M Y' }}</div>{% if order.is_overdue %}<span class="urgency overdue">Overdue</span>{% elif order.is_due_today %}<span class="urgency due-today">Due today</span>{% endif %}</td>
                 <td>{{ order.customer }}{% if order.customer.company %}<div class="meta">{{ order.customer.company }}</div>{% endif %}</td>
                 <td><span class="role-badge order-state order-state-{{ order.status }}">{{ order.get_status_display }}</span></td>
                 <td>{{ order.collected|yesno:'Yes,No' }}</td>
                 <td><span class="role-badge order-payment-{{ order.payment_status }}">{{ order.get_payment_status_display }}</span></td>
                 <td>{% if order.assigned_to %}{{ order.assigned_to.get_full_name|default:order.assigned_to.username }}{% else %}Unassigned{% endif %}</td>
-                <td>{% for item in order.items.all %}<div>{{ item.product.name }}<div class="meta">Due {{ item.due_date|date:'d M Y' }}{% if item.due_time %} at {{ item.due_time|time:'H:i' }}{% endif %}</div></div>{% endfor %}</td>
+                <td>{% if order.next_due_date %}<strong>{{ order.next_due_date|date:'d M Y' }}{% if order.next_due_time %} · {{ order.next_due_time|time:'H:i' }}{% endif %}</strong>{% endif %}<details class="order-item-preview"><summary>{{ order.items.all|length }} item{{ order.items.all|length|pluralize }}</summary>{% for item in order.items.all %}<div>{{ item.product.name }}<div class="meta">Due {{ item.due_date|date:'d M Y' }}{% if item.due_time %} at {{ item.due_time|time:'H:i' }}{% endif %}</div></div>{% endfor %}</details></td>
                 <td class="money">{{ order.currency }} {{ order.total|floatformat:2 }}</td>
                 <td>{% if perms.crm.change_serviceorder %}<a class="button-link" href="{% url 'edit_order' order.pk %}">View</a>{% endif %}</td>
             </tr>

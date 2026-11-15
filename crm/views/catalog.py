@@ -4,12 +4,14 @@ from django.db.models import Count, Prefetch, Q, Value
 from django.db.models.functions import Coalesce, Lower
 from django.db.models.deletion import ProtectedError
 from django.http import HttpResponseForbidden
-from django.shortcuts import get_object_or_404, redirect, render
+from django.shortcuts import get_object_or_404, render
 
 from crm.forms import ProductCategoryForm, ProductForm, ServiceForm
 from crm.models import Product, ProductCategory, Service
 
-from .common import has_permission
+from .common import has_permission, list_page, return_to_list
+from django.utils import timezone
+from django.views.decorators.http import require_POST
 
 
 @login_required
@@ -18,12 +20,13 @@ def product_categories(request):
         return HttpResponseForbidden("Only admin users can manage configuration.")
 
     search_query = request.GET.get("q", "").strip()
-    existing_categories = ProductCategory.objects.annotate(product_count=Count("products"))
+    existing_categories = ProductCategory.objects.annotate(
+        product_count=Count("products")
+    )
 
     if search_query:
         existing_categories = existing_categories.filter(
-            Q(name__icontains=search_query)
-            | Q(description__icontains=search_query)
+            Q(name__icontains=search_query) | Q(description__icontains=search_query)
         )
 
     existing_categories = existing_categories.order_by(Lower("name"), "id")
@@ -31,7 +34,7 @@ def product_categories(request):
         request,
         "crm/product_categories.html",
         {
-            "existing_categories": existing_categories,
+            **list_page(request, existing_categories, "existing_categories"),
             "search_query": search_query,
         },
     )
@@ -47,7 +50,7 @@ def create_product_category(request):
         if form.is_valid():
             category = form.save()
             messages.success(request, f"Category '{category}' was created.")
-            return redirect("product_categories")
+            return return_to_list(request, "product_categories")
     else:
         form = ProductCategoryForm()
 
@@ -77,7 +80,7 @@ def edit_product_category(request, category_id):
         if form.is_valid():
             form.save()
             messages.success(request, f"Category '{category}' was updated.")
-            return redirect("product_categories")
+            return return_to_list(request, "product_categories")
     else:
         form = ProductCategoryForm(instance=category)
 
@@ -101,13 +104,15 @@ def delete_product_category(request, category_id):
         return HttpResponseForbidden("Only admin users can manage configuration.")
 
     if request.method != "POST":
-        return HttpResponseForbidden("Categories can only be deleted with a POST request.")
+        return HttpResponseForbidden(
+            "Categories can only be deleted with a POST request."
+        )
 
     category = get_object_or_404(ProductCategory, pk=category_id)
     category_name = str(category)
     category.delete()
     messages.success(request, f"Category '{category_name}' was deleted.")
-    return redirect("product_categories")
+    return return_to_list(request, "product_categories")
 
 
 @login_required
@@ -116,9 +121,21 @@ def products(request):
         return HttpResponseForbidden("Only admin users can manage configuration.")
 
     search_query = request.GET.get("q", "").strip()
-    existing_products = Product.objects.select_related("category").prefetch_related(
-        Prefetch("services", queryset=Service.objects.order_by("name", "id"))
-    ).all()
+    existing_products = (
+        Product.objects.select_related("category")
+        .prefetch_related(
+            Prefetch("services", queryset=Service.objects.order_by("name", "id"))
+        )
+        .all()
+    )
+
+    catalog_status = request.GET.get("status", "active")
+    if catalog_status not in ("active", "archived", "all"):
+        catalog_status = "active"
+    if catalog_status != "all":
+        existing_products = existing_products.filter(
+            is_archived=catalog_status == "archived"
+        )
 
     if search_query:
         existing_products = existing_products.filter(
@@ -133,7 +150,8 @@ def products(request):
         request,
         "crm/products.html",
         {
-            "existing_products": existing_products,
+            **list_page(request, existing_products, "existing_products"),
+            "catalog_status": catalog_status,
             "search_query": search_query,
         },
     )
@@ -149,7 +167,7 @@ def create_product(request):
         if form.is_valid():
             product = form.save()
             messages.success(request, f"Product '{product}' was created.")
-            return redirect("products")
+            return return_to_list(request, "products")
     else:
         form = ProductForm()
 
@@ -179,7 +197,7 @@ def edit_product(request, product_id):
         if form.is_valid():
             form.save()
             messages.success(request, f"Product '{product}' was updated.")
-            return redirect("products")
+            return return_to_list(request, "products")
     else:
         form = ProductForm(instance=product)
 
@@ -203,17 +221,21 @@ def delete_product(request, product_id):
         return HttpResponseForbidden("Only admin users can manage configuration.")
 
     if request.method != "POST":
-        return HttpResponseForbidden("Products can only be deleted with a POST request.")
+        return HttpResponseForbidden(
+            "Products can only be deleted with a POST request."
+        )
 
     product = get_object_or_404(Product, pk=product_id)
     product_name = str(product)
     try:
         product.delete()
     except ProtectedError:
-        messages.error(request, "This product is used on a service order and cannot be deleted.")
-        return redirect("products")
+        messages.error(
+            request, "This product is used on a service order and cannot be deleted."
+        )
+        return return_to_list(request, "products")
     messages.success(request, f"Product '{product_name}' was deleted.")
-    return redirect("products")
+    return return_to_list(request, "products")
 
 
 @login_required
@@ -233,6 +255,14 @@ def services(request):
         )
     ).all()
 
+    catalog_status = request.GET.get("status", "active")
+    if catalog_status not in ("active", "archived", "all"):
+        catalog_status = "active"
+    if catalog_status != "all":
+        existing_services = existing_services.filter(
+            is_archived=catalog_status == "archived"
+        )
+
     if search_query:
         existing_services = existing_services.filter(
             Q(name__icontains=search_query)
@@ -245,7 +275,8 @@ def services(request):
         request,
         "crm/services.html",
         {
-            "existing_services": existing_services,
+            **list_page(request, existing_services, "existing_services"),
+            "catalog_status": catalog_status,
             "search_query": search_query,
         },
     )
@@ -261,7 +292,7 @@ def create_service(request):
         if form.is_valid():
             service = form.save()
             messages.success(request, f"Service '{service}' was created.")
-            return redirect("services")
+            return return_to_list(request, "services")
     else:
         form = ServiceForm()
 
@@ -291,7 +322,7 @@ def edit_service(request, service_id):
         if form.is_valid():
             form.save()
             messages.success(request, f"Service '{service}' was updated.")
-            return redirect("services")
+            return return_to_list(request, "services")
     else:
         form = ServiceForm(instance=service)
 
@@ -315,14 +346,35 @@ def delete_service(request, service_id):
         return HttpResponseForbidden("Only admin users can manage configuration.")
 
     if request.method != "POST":
-        return HttpResponseForbidden("Services can only be deleted with a POST request.")
+        return HttpResponseForbidden(
+            "Services can only be deleted with a POST request."
+        )
 
     service = get_object_or_404(Service, pk=service_id)
     service_name = str(service)
     try:
         service.delete()
     except ProtectedError:
-        messages.error(request, "This service is used on a service order and cannot be deleted.")
-        return redirect("services")
+        messages.error(
+            request, "This service is used on a service order and cannot be deleted."
+        )
+        return return_to_list(request, "services")
     messages.success(request, f"Service '{service_name}' was deleted.")
-    return redirect("services")
+    return return_to_list(request, "services")
+
+
+@login_required
+@require_POST
+def set_catalog_archive(request, kind, object_id, archived):
+    model = {"product": Product, "service": Service}[kind]
+    if not has_permission(request.user, f"crm.change_{kind}"):
+        return HttpResponseForbidden("You cannot change this catalogue record.")
+    record = get_object_or_404(model, pk=object_id)
+    model.objects.filter(pk=record.pk).update(
+        is_archived=archived, updated_at=timezone.now()
+    )
+    messages.success(
+        request,
+        f"{kind.title()} '{record}' was {'archived' if archived else 'restored'}.",
+    )
+    return return_to_list(request, kind + "s")

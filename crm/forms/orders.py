@@ -9,12 +9,14 @@ from crm.forms.customers import CustomerForm
 from crm.models import (
     Customer,
     OrderItem,
+    Product,
     OrderServiceCharge,
     Service,
     ServiceOrder,
     SystemSettings,
 )
 from crm.order_workflow import ORDER_ACTIONS, SAVE_LABELS
+from crm.order_queries import WORK_VIEWS
 
 
 class CustomerChoiceField(forms.ModelChoiceField):
@@ -105,9 +107,7 @@ class ServiceOrderForm(forms.ModelForm):
         if self.locked:
             for name in ("customer_mode", "customer"):
                 self.fields[name].disabled = True
-            if self.original_status == ServiceOrder.Status.COMPLETE:
-                self.fields["notes"].disabled = True
-            elif self.is_bound and "notes" not in self.data:
+            if self.is_bound and "notes" not in self.data:
                 self.data = self.data.copy()
                 self.data["notes"] = self.instance.notes
         if self.original_status == ServiceOrder.Status.CANCELLED:
@@ -157,10 +157,23 @@ class ServiceOrderForm(forms.ModelForm):
 
 
 class OrderFilterForm(forms.Form):
+    view = forms.ChoiceField(
+        choices=WORK_VIEWS, required=False, widget=forms.HiddenInput
+    )
+    sort = forms.ChoiceField(
+        label="Sort by",
+        choices=(
+            ("newest", "Newest first"),
+            ("deadline", "Nearest deadline"),
+            ("oldest", "Oldest first"),
+        ),
+        required=False,
+    )
     customer = CustomerChoiceField(
         queryset=Customer.objects.order_by("first_name", "last_name", "pk"),
         required=False,
         empty_label="All customers",
+        widget=forms.HiddenInput,
     )
     q = forms.CharField(
         label="Search",
@@ -197,6 +210,13 @@ class DeleteDraftForm(forms.Form):
 
 
 class OrderItemForm(forms.ModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.original_product_id = self.instance.product_id
+        self.fields["product"].queryset = Product.objects.filter(
+            Q(is_archived=False) | Q(pk=self.original_product_id)
+        ).order_by("name", "pk")
+
     class Meta:
         model = OrderItem
         fields = ("product", "due_date", "due_time", "notes")
@@ -215,7 +235,15 @@ class OrderItemForm(forms.ModelForm):
 class OrderServiceChargeForm(forms.ModelForm):
     quantity = forms.IntegerField(min_value=1, max_value=100000000, initial=1)
 
-    def __init__(self, *args, product_id=None, general=False, locked=False, **kwargs):
+    def __init__(
+        self,
+        *args,
+        product_id=None,
+        original_product_id=None,
+        general=False,
+        locked=False,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
         services = Service.objects.filter(products__isnull=True)
         if product_id and not general:
@@ -224,7 +252,10 @@ class OrderServiceChargeForm(forms.ModelForm):
             )
         elif not general:
             services = Service.objects.none()
-        if locked and self.instance.service_id:
+        services = services.filter(is_archived=False)
+        if self.instance.service_id and (
+            locked or general or product_id == original_product_id
+        ):
             services = Service.objects.filter(
                 Q(pk__in=services.values("pk")) | Q(pk=self.instance.service_id)
             )
@@ -233,6 +264,7 @@ class OrderServiceChargeForm(forms.ModelForm):
         self.fields["notes"].label = "Note (optional)"
         self.original_service_id = self.instance.service_id or ""
         self.original_price = self.instance.unit_price if self.instance.pk else ""
+        self.product_changed = not general and product_id != original_product_id
 
     def clean_service(self):
         service = self.cleaned_data["service"]
@@ -415,7 +447,11 @@ class OrderEditor:
             data,
             instance=item_form.instance,
             prefix=f"{item_form.prefix}-services",
-            form_kwargs={"product_id": product_id, "locked": self.locked},
+            form_kwargs={
+                "product_id": product_id,
+                "original_product_id": item_form.original_product_id,
+                "locked": self.locked,
+            },
         )
         item_form.services.empty_charge = item_form.services.empty_form
         item_form.services.empty_charge.prefix = (
@@ -504,6 +540,13 @@ class OrderEditor:
             ):
                 continue
             item = item_form.save(commit=False)
+            if not item.pk or item.product_id != item_form.original_product_id:
+                if not Product.objects.filter(
+                    pk=item.product_id, is_archived=False
+                ).update(updated_at=F("updated_at")):
+                    raise OrderConflict(
+                        "This product was archived or removed. Choose an active product before saving."
+                    )
             item.order = order
             item.save()
             self._save_charges(item_form.services, order, item)
@@ -520,6 +563,17 @@ class OrderEditor:
             if not form.cleaned_data or not form.has_changed() and not form.instance.pk:
                 continue
             charge = form.save(commit=False)
+            if (
+                not charge.pk
+                or charge.service_id != form.original_service_id
+                or form.product_changed
+            ):
+                if not Service.objects.filter(
+                    pk=charge.service_id, is_archived=False
+                ).update(updated_at=F("updated_at")):
+                    raise OrderConflict(
+                        "This service was archived or removed. Choose an active service before saving."
+                    )
             if not charge.pk or charge.service_id != form.original_service_id:
                 charge.unit_price = charge.service.price
             charge.order = order

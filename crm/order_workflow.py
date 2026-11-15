@@ -57,6 +57,6 @@ ORDER_ACTIONS = {
 SAVE_LABELS = {
     ServiceOrder.Status.DRAFT: "Save draft",
     ServiceOrder.Status.IN_PROGRESS: "Save changes",
-    ServiceOrder.Status.COMPLETE: "Save collection/payment changes",
+    ServiceOrder.Status.COMPLETE: "Save changes",
     ServiceOrder.Status.CANCELLED: "Save notes",
 }

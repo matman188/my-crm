@@ -1068,13 +1068,33 @@ class ServiceOrderTests(TestCase):
         self.create_order(
             self.payload(customer=Customer.objects.create(first_name="Unrelated"))
         )
-        for query in (order.reference, "alex@example.com", "Jordan"):
+        for query in (
+            order.reference,
+            "alex@example.com",
+            "Alex Dancer",
+            "0123456789",
+            "Jordan",
+        ):
             response = self.client.get(reverse("orders"), {"q": query})
             self.assertEqual(response.context["page_obj"].paginator.count, 1)
             self.assertContains(response, order.reference)
             self.assertContains(response, "99.40")
         response = self.client.get(reverse("orders"), {"q": "no matching orders"})
         self.assertContains(response, "No orders match your search.")
+
+    def test_orders_use_search_instead_of_a_customer_dropdown(self):
+        order = self.create_order()
+        response = self.client.get(reverse("orders"))
+        self.assertContains(response, 'type="hidden" name="customer"')
+        self.assertNotContains(response, '<select name="customer"')
+        self.assertContains(response, 'name="q"')
+        response = self.client.get(
+            reverse("orders"), {"customer": self.customer.pk, "q": "Alex Dancer"}
+        )
+        self.assertEqual(response.context["page_obj"].object_list[0].pk, order.pk)
+        self.assertContains(
+            response, "Orders for <strong>Alex Dancer</strong>", html=True
+        )
 
     def test_all_four_statuses_remain_editable_and_preserve_services(self):
         order = self.create_order()
@@ -1529,14 +1549,7 @@ class ServiceOrderTests(TestCase):
                 self.assertFalse(
                     Customer.objects.filter(first_name="Forged customer").exists()
                 )
-                self.assertEqual(
-                    order.notes,
-                    (
-                        "Updated order notes"
-                        if status == "cancelled"
-                        else "Call before collection"
-                    ),
-                )
+                self.assertEqual(order.notes, "Updated order notes")
                 self.assertEqual(original_item.notes, "Keep the original ribbons")
                 self.assertEqual(original_item.due_date, date(2026, 11, 20))
                 self.assertIsNone(original_item.due_time)
@@ -1772,7 +1785,7 @@ class ServiceOrderTests(TestCase):
         self.assertEqual(order.status, "complete")
         self.assertEqual(order.notes, "Final work instructions")
         data = self.workflow_payload(
-            order, action="reopen", notes="Ignored until reopened"
+            order, action="reopen", notes="Updated while reopening"
         )
         data["items-0-due_date"] = "2027-01-01"
         self.assertEqual(
@@ -1781,7 +1794,7 @@ class ServiceOrderTests(TestCase):
         )
         order.refresh_from_db()
         self.assertEqual(order.status, "in_progress")
-        self.assertEqual(order.notes, "Final work instructions")
+        self.assertEqual(order.notes, "Updated while reopening")
         self.assertEqual(order.items.get().due_date, date(2026, 12, 3))
 
     def test_stale_in_progress_details_cannot_overwrite_newer_edits(self):
@@ -2073,7 +2086,7 @@ class ServiceOrderTests(TestCase):
                 fields["payment_status"].disabled, status in ("draft", "cancelled")
             )
             self.assertEqual(fields["collected"].disabled, status != "complete")
-            self.assertEqual(fields["notes"].disabled, status == "complete")
+            self.assertFalse(fields["notes"].disabled)
             assign_button = re.search(
                 r"<button[^>]*data-assign-to-me[^>]*>", response.content.decode()
             ).group()
@@ -2199,19 +2212,40 @@ class ServiceOrderTests(TestCase):
                 self.assertEqual(list(order.charges.values()), original_charges)
                 self.assertEqual(order.total, Decimal("99.40"))
 
-    def test_cancelled_order_preserves_omitted_notes_and_allows_clearing(self):
-        order = self.create_order(dict(self.payload(), status="cancelled"))
-        for changes, expected in [({}, "Call before collection"), ({"notes": ""}, "")]:
-            data = self.workflow_payload(order, **changes)
-            self.assertEqual(
-                self.client.post(
-                    reverse("edit_order", args=[order.pk]), data
-                ).status_code,
-                302,
-            )
-            order.refresh_from_db()
-            self.assertEqual(order.notes, expected)
-            self.assertEqual(order.status, "cancelled")
+    def test_order_notes_can_be_updated_and_cleared_in_every_state(self):
+        for status in ServiceOrder.Status.values:
+            with self.subTest(status=status):
+                order = self.create_order(
+                    dict(self.payload(), status=status, assigned_to=str(self.worker.pk))
+                )
+                items = list(order.items.values())
+                charges = list(order.charges.values())
+                for notes in ("Updated after customer follow-up", ""):
+                    data = self.edit_payload(order)
+                    data["notes"] = notes
+                    response = self.client.post(
+                        reverse("edit_order", args=[order.pk]), data
+                    )
+                    self.assertEqual(response.status_code, 302)
+                    order.refresh_from_db()
+                    self.assertEqual(order.notes, notes)
+                    self.assertEqual(order.status, status)
+                    self.assertEqual(list(order.items.values()), items)
+                    self.assertEqual(list(order.charges.values()), charges)
+
+    def test_complete_and_cancelled_orders_preserve_omitted_notes(self):
+        for status in ("complete", "cancelled"):
+            with self.subTest(status=status):
+                order = self.create_order(
+                    dict(self.payload(), status=status, assigned_to=str(self.worker.pk))
+                )
+                response = self.client.post(
+                    reverse("edit_order", args=[order.pk]), self.workflow_payload(order)
+                )
+                self.assertEqual(response.status_code, 302)
+                order.refresh_from_db()
+                self.assertEqual(order.notes, "Call before collection")
+                self.assertEqual(order.status, status)
 
     def test_stale_cancelled_order_notes_cannot_overwrite_a_newer_reason(self):
         order = self.create_order(dict(self.payload(), status="cancelled"))

@@ -22,7 +22,7 @@
                 value="{{ search_query }}"
                 placeholder="Search by service name, description, or product"
             >
-            <button class="button" type="submit">Search</button>
+            <select name="status" aria-label="Catalogue status"><option value="active"{% if catalog_status == 'active' %} selected{% endif %}>Active</option><option value="archived"{% if catalog_status == 'archived' %} selected{% endif %}>Archived</option><option value="all"{% if catalog_status == 'all' %} selected{% endif %}>All</option></select><button class="button" type="submit">Search</button>
             {% if search_query %}
                 <a class="button-link" href="{% url 'services' %}">Clear</a>
             {% endif %}
@@ -44,7 +44,7 @@
                     {% for service in existing_services %}
                         <tr>
                             <td>
-                                <div class="user-name">{{ service.name }}</div>
+                                <div class="user-name">{{ service.name }} {% if service.is_archived %}<span class="status-pill inactive">Archived</span>{% endif %}</div>
                                 {% if service.description %}
                                     <div class="user-email">{{ service.description|truncatechars:110 }}</div>
                                 {% endif %}
@@ -69,16 +69,17 @@
                                             </div>
                                         {% endfor %}
                                     {% else %}
-                                        <span class="meta">Not linked to a product</span>
+                                        <span class="role-badge standard">Global service</span>
                                     {% endif %}
                                 {% endwith %}
                             </td>
                             <td>
                                 <div class="button-row">
                                     <a class="button-link" href="{% url 'edit_service' service.id %}">Edit</a>
+                                    {% if perms.crm.change_service %}<form method="post" action="{% if service.is_archived %}{% url 'restore_service' service.id %}{% else %}{% url 'archive_service' service.id %}{% endif %}">{% csrf_token %}<button class="button secondary" type="submit" data-confirm="{% if service.is_archived %}Restore this service for new orders?{% else %}Archive this service? Existing orders will keep their details and prices.{% endif %}">{% if service.is_archived %}Restore{% else %}Archive{% endif %}</button></form>{% endif %}
                                     <form method="post" action="{% url 'delete_service' service.id %}">
                                         {% csrf_token %}
-                                        <button class="button danger" type="submit">Delete</button>
+                                        <button class="button danger" type="submit" data-confirm-title="Delete service" data-confirm="Are you sure you wish to delete this service? This cannot be undone.">Delete</button>
                                     </form>
                                 </div>
                             </td>
@@ -93,4 +94,5 @@
             </div>
         {% endif %}
     </div>
+{% include 'crm/_pagination.html' %}
 {% endblock %}

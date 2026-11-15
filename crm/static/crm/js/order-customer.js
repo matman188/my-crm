@@ -27,11 +27,27 @@
     let snapshot = null;
     let editingCustomerId = mode.value === "edit" ? customerId.value : "";
     let savingCustomer = false;
+    let dialogInitial = "";
+    const dialogValues = () => JSON.stringify(newFields.map(field => field.value));
+    ["input", "change"].forEach(type => dialog.addEventListener(type, () => {
+        dialog.dataset.unsavedChanges = String(dialog.open && dialogValues() !== dialogInitial);
+    }));
 
     function updateCustomerNotes() {
         const selected = customers.find(customer => String(customer.id) === customerId.value);
         const notes = mode.value === "new" || mode.value === "edit" ? newNotes.value : selected?.notes;
         customerNotes.textContent = notes || "No customer notes.";
+        const contact = editor.querySelector("[data-customer-contact]");
+        if (contact) {
+            contact.replaceChildren();
+            const details = selected?.details || {};
+            if (mode.value !== "new" && details.email) {
+                const link = document.createElement("a"); link.href = "mailto:" + details.email; link.textContent = details.email; contact.append(link);
+            }
+            if (mode.value !== "new" && details.primary_phone) {
+                const link = document.createElement("a"); link.href = "tel:" + details.primary_phone.replace(/[^+\d]/g, ""); link.textContent = details.primary_phone; contact.append(link);
+            }
+        }
     }
 
     function validateNewEmail() {
@@ -47,6 +63,7 @@
         badge.textContent = mode.value === "edit" ? "Customer changes" : "New customer";
         if (editButton) editButton.disabled = mode.value !== "new" && !customers.some(customer => String(customer.id) === customerId.value);
         updateCustomerNotes();
+        editor.dispatchEvent(new Event("crm:changed", { bubbles: true }));
     }
 
     function closeList() {
@@ -160,6 +177,8 @@
         saveErrors.hidden = true;
         closeList();
         enableNewFields(true);
+        dialogInitial = dialogValues();
+        dialog.dataset.unsavedChanges = "false";
         dialog.showModal();
         newFields.find(field => field.type !== "hidden")?.focus();
     }
@@ -186,6 +205,7 @@
             input.value = selected?.label || "";
         }
         enableNewFields(mode.value === "new" || mode.value === "edit");
+        dialog.dataset.unsavedChanges = "false";
         dialog.close();
         snapshot = null;
     }
@@ -219,8 +239,10 @@
             Object.assign(selected, result.customer);
             chooseCustomer(selected);
             snapshot = null;
+            dialog.dataset.unsavedChanges = "false";
             dialog.close();
             status.textContent = "Customer saved.";
+            window.crmUX?.notify("Customer saved. Any unsaved order changes still need to be saved.");
         } catch {
             saveErrors.textContent = "Could not confirm the customer save. Please try again.";
             saveErrors.hidden = false;
@@ -252,6 +274,7 @@
         input.value = `${first} ${last}`.trim();
         input.setCustomValidity("");
         enableNewFields(true);
+        dialog.dataset.unsavedChanges = "false";
         dialog.close();
         snapshot = null;
         status.textContent = "New customer selected.";

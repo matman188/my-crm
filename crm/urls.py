@@ -1,4 +1,6 @@
 from django.urls import path
+from crm.views.catalog import set_catalog_archive
+from crm.views.users import set_user_active
 
 from crm.views import (
     archive_customer,
@@ -35,6 +37,42 @@ from crm.views import (
 )
 
 urlpatterns = [
+    path(
+        "products/<int:object_id>/archive/",
+        set_catalog_archive,
+        {"kind": "product", "archived": True},
+        name="archive_product",
+    ),
+    path(
+        "products/<int:object_id>/restore/",
+        set_catalog_archive,
+        {"kind": "product", "archived": False},
+        name="restore_product",
+    ),
+    path(
+        "services/<int:object_id>/archive/",
+        set_catalog_archive,
+        {"kind": "service", "archived": True},
+        name="archive_service",
+    ),
+    path(
+        "services/<int:object_id>/restore/",
+        set_catalog_archive,
+        {"kind": "service", "archived": False},
+        name="restore_service",
+    ),
+    path(
+        "users/<int:user_id>/deactivate/",
+        set_user_active,
+        {"active": False},
+        name="deactivate_user",
+    ),
+    path(
+        "users/<int:user_id>/reactivate/",
+        set_user_active,
+        {"active": True},
+        name="reactivate_user",
+    ),
     path("", home, name="home"),
     path("orders/", orders, name="orders"),
     path("orders/create/", create_order, name="create_order"),

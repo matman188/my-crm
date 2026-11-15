@@ -6,6 +6,16 @@
 
 {% block content %}
 <h2>Dashboard</h2>
-<p class="meta">You are signed in as {{ request.user.username }}.</p>
-<p>Use the sidebar to move between sections of the CRM.</p>
+<p class="meta">Welcome, {{ request.user.get_full_name|default:request.user.username }}.</p>
+{% if work_cards %}
+<div class="dashboard-cards">
+    {% for card in work_cards %}<a class="dashboard-card" href="{% url 'orders' %}?view={{ card.key }}&amp;sort=deadline"><span>{{ card.label }}</span><strong>{{ card.count }}</strong></a>{% endfor %}
+</div>
+<div class="toolbar"><h3>Upcoming work</h3>{% if perms.crm.add_serviceorder %}<a class="button-link" href="{% url 'create_order' %}">Create order</a>{% endif %}</div>
+<div class="dashboard-due-list">
+{% for order in due_orders %}
+    <a class="dashboard-due-row" href="{% url 'orders' %}?q={{ order.reference }}"><strong>{{ order.reference }}</strong><span>{{ order.customer }}</span><span>{{ order.next_due_date|date:'d M Y' }}{% if order.next_due_time %} · {{ order.next_due_time|time:'H:i' }}{% endif %}</span>{% if order.is_overdue %}<span class="urgency overdue">Overdue</span>{% elif order.is_due_today %}<span class="urgency due-today">Due today</span>{% endif %}</a>
+{% empty %}<p class="meta">No open work with a deadline yet.</p>{% endfor %}
+</div>
+{% else %}<p>Use the sidebar to open Customers and the sections available to your account.</p>{% endif %}
 {% endblock %}

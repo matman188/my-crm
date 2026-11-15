@@ -49,7 +49,7 @@ customer's physical items; its invoice is a separate billing record.
 | Global services | Some services must be available without a link to a specific product. |
 | Deadlines (D02) | Each order item has its own deadline date, with an optional time in the business timezone. |
 | Assignment | Assigned To and Assign to Me are editable only in In Progress and Complete. A user must be assigned before Complete. |
-| Order editing | Customer selection, products, services, and quantities are editable only in Draft. Deadlines, optional times, and internal order/item/service notes are also editable in In Progress without changing charges or invoice data. Complete locks these details until reopened. Cancelled permits only Order Notes, for example a cancellation reason; other fields stay locked until restored. Collected is editable only in Complete. |
+| Order editing | Order Notes are editable in every state. Customer selection, products, services, and quantities are editable only in Draft. Deadlines, optional times, and internal item/service notes are also editable in In Progress without changing charges or invoice data. Complete locks deadlines and item/service notes until reopened. Cancelled permits only Order Notes, for example a cancellation reason; other fields stay locked until restored. Collected is editable only in Complete. |
 | Submission | A Submit button saves the draft and moves it to In Progress. Draft field locks still apply during this request, so assignment/payment edits happen afterwards. |
 | Draft disposal | Delete draft permanently removes a saved Draft and its items/service charges; Discard leaves an unsaved draft. Cancel order is available only in In Progress and retains the Cancelled order. |
 | Status controls | Show the current status in a clear, labelled badge near the order heading, alongside the total and currency. Only stage-specific action buttons can change Status, with allowed transitions enforced on the server. |
@@ -167,6 +167,9 @@ There is no separate Closed status or payment-dependent closure step.
   retaining the customer filter when filtering or paging. Do not match customers
   by name or email text; identical names must remain separate. Respect order-view
   permission on navigation links.
+- Use the main Orders search for customer names, email, company, and phone;
+  do not display a separate customer filter dropdown. Preserve exact customer-ID
+  filtering for customer-history links, with a visible customer context label.
 - Keep labels brief. Put Order Details at the top and label the assignment field
   Assigned To. Above it, show the current status in a labelled badge near the
   order heading and show the total with its currency. Keep header and bottom
@@ -556,7 +559,8 @@ These phases are a suggested implementation order, not a time or cost estimate.
     In Progress permits deadline dates, optional times, and internal order/item/
     service notes to change, preserving charges and invoice data. Invalid deadlines
     prevent the whole save; stale requests cannot overwrite newer edits.
-    Complete locks deadlines and notes until reopened. Cancelled allows only
+    Order Notes remain editable in every state. Complete locks deadlines and
+    item/service notes until reopened. Cancelled allows only
     order-level notes, including a cancellation reason; other fields remain
     locked, including during restoration. Assignment/payment are editable only
     in In Progress and Complete; collection only in Complete.
@@ -615,6 +619,8 @@ requirements so planned features are not mistaken for delivered functionality.
 
 | Date | Decision/change |
 | --- | --- |
+| 15 November 2026 | Made Order Notes editable in every order state, including Complete. Notes can be updated or cleared without reopening; item/service notes and other stage locks retain their existing rules. |
+| 15 November 2026 | Accepted and implemented the QOL pass: safe forms and confirmations, order work queues and business-timezone deadline rules, workload dashboard, preserved list navigation, item duplication/bulk deadlines/undo, catalogue archiving, staff deactivation/history protection, directory pagination and contact links. These retain the existing stages and locks. See qol-improvements.md for behaviour and checks. |
 | 14 November 2026 | Initial scope captured from the business workflow. Confirmed manual closure, full payment only, and one business per installation initially. |
 | 14 November 2026 | Confirmed product-defined units, deadline dates with optional times, repeated service selections on one product, optional internal notes per service occurrence, and a global order notes section. Updated requirements and acceptance scenarios; resolved D01/D02 and retained overnight interpretation as D11. |
 | 14 November 2026 | Implemented the draft service-order milestone. Delivery details, provisional pricing/permission choices, verification, and remaining work are recorded separately in development-status.md. |

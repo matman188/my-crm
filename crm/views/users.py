@@ -2,9 +2,10 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q
+from django.db.models.deletion import ProtectedError
 from django.db.models.functions import Lower
 from django.http import HttpResponseForbidden
-from django.shortcuts import get_object_or_404, redirect, render
+from django.shortcuts import get_object_or_404, render
 
 from crm.authz import can_manage_user_record, get_access_level_label
 from crm.forms import (
@@ -13,7 +14,8 @@ from crm.forms import (
     SystemUserUpdateForm,
 )
 
-from .common import has_permission
+from .common import has_permission, list_page, return_to_list
+from django.views.decorators.http import require_POST
 
 
 @login_required
@@ -32,14 +34,18 @@ def users(request):
             | Q(email__icontains=search_query)
         )
 
-    for user in existing_users:
+    page_context = list_page(request, existing_users, "existing_users")
+    for user in page_context["existing_users"]:
+        user.has_order_history = (
+            user.assigned_orders.exists() or user.created_orders.exists()
+        )
         user.access_level_label = get_access_level_label(user)
         user.can_be_managed_by_current_user = can_manage_user_record(request.user, user)
     return render(
         request,
         "crm/users.html",
         {
-            "existing_users": existing_users,
+            **page_context,
             "search_query": search_query,
         },
     )
@@ -55,7 +61,7 @@ def create_user(request):
         if form.is_valid():
             created_user = form.save()
             messages.success(request, f"User '{created_user.username}' was created.")
-            return redirect("users")
+            return return_to_list(request, "users")
     else:
         form = SystemUserCreationForm(current_user=request.user)
 
@@ -80,11 +86,13 @@ def edit_user(request, user_id):
         return HttpResponseForbidden("You cannot manage this user.")
 
     if request.method == "POST":
-        form = SystemUserUpdateForm(request.POST, instance=user_to_edit, current_user=request.user)
+        form = SystemUserUpdateForm(
+            request.POST, instance=user_to_edit, current_user=request.user
+        )
         if form.is_valid():
             form.save()
             messages.success(request, f"User '{user_to_edit.username}' was updated.")
-            return redirect("users")
+            return return_to_list(request, "users")
     else:
         form = SystemUserUpdateForm(instance=user_to_edit, current_user=request.user)
 
@@ -113,8 +121,10 @@ def change_user_password(request, user_id):
         form = SystemUserPasswordChangeForm(user_to_update, request.POST)
         if form.is_valid():
             form.save()
-            messages.success(request, f"Password updated for '{user_to_update.username}'.")
-            return redirect("users")
+            messages.success(
+                request, f"Password updated for '{user_to_update.username}'."
+            )
+            return return_to_list(request, "users")
     else:
         form = SystemUserPasswordChangeForm(user_to_update)
 
@@ -145,8 +155,47 @@ def delete_user(request, user_id):
 
     if user_to_delete.is_superuser:
         messages.error(request, "Superusers cannot be deleted from this screen.")
-        return redirect("users")
+        return return_to_list(request, "users")
 
-    user_to_delete.delete()
+    if (
+        user_to_delete.pk == request.user.pk
+        or user_to_delete.assigned_orders.exists()
+        or user_to_delete.created_orders.exists()
+    ):
+        messages.error(
+            request,
+            "This user has order history or is your account. Deactivate staff with order history instead.",
+        )
+        return return_to_list(request, "users")
+
+    try:
+        user_to_delete.delete()
+    except ProtectedError:
+        messages.error(
+            request, "This user has order history. Deactivate the account instead."
+        )
+        return return_to_list(request, "users")
     messages.success(request, f"User '{username}' was deleted.")
-    return redirect("users")
+    return return_to_list(request, "users")
+
+
+@login_required
+@require_POST
+def set_user_active(request, user_id, active):
+    if not has_permission(request.user, "auth.change_user"):
+        return HttpResponseForbidden("You cannot manage system users.")
+    person = get_object_or_404(get_user_model(), pk=user_id)
+    if (
+        not can_manage_user_record(request.user, person)
+        or person.is_superuser
+        or person.pk == request.user.pk
+    ):
+        return HttpResponseForbidden(
+            "You cannot deactivate or reactivate this account."
+        )
+    get_user_model().objects.filter(pk=person.pk).update(is_active=active)
+    messages.success(
+        request,
+        f"User '{person.username}' was {'reactivated' if active else 'deactivated'}.",
+    )
+    return return_to_list(request, "users")

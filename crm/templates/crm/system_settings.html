@@ -60,7 +60,7 @@
         <form method="post">
             {% csrf_token %}
             <input type="hidden" name="action" value="load_demo_data">
-            <button class="button danger" type="submit">Load demo data</button>
+            <button class="button danger" type="submit" data-confirm-title="Load demo data" data-confirm="Load or refresh the demo records? Existing demo records will be refreshed.">Load demo data</button>
         </form>
     </section>
 {% endblock %}

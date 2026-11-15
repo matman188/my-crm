@@ -1,4 +1,5 @@
 {% extends "crm/base.html" %}
+{% load contact %}
 
 {% block title %}Customers{% endblock %}
 {% block page_title %}Customers{% endblock %}
@@ -63,13 +64,13 @@
                             </td>
                             <td>
                                 {% if customer.email %}
-                                    <div class="user-email">{{ customer.email }}</div>
+                                    <div class="user-email"><a href="mailto:{{ customer.email }}">{{ customer.email }}</a></div>
                                 {% endif %}
                                 {% if customer.primary_phone %}
-                                    <div class="user-email">Primary: {{ customer.primary_phone }}</div>
+                                    <div class="user-email">Primary: <a href="tel:{{ customer.primary_phone|telephone }}">{{ customer.primary_phone }}</a></div>
                                 {% endif %}
                                 {% if customer.secondary_phone %}
-                                    <div class="user-email">Secondary: {{ customer.secondary_phone }}</div>
+                                    <div class="user-email">Secondary: <a href="tel:{{ customer.secondary_phone|telephone }}">{{ customer.secondary_phone }}</a></div>
                                 {% endif %}
                                 {% if not customer.email and not customer.primary_phone and not customer.secondary_phone %}
                                     <span class="meta">No contact info</span>
@@ -87,7 +88,7 @@
                                     <a class="button-link" href="{% url 'edit_customer' customer.id %}">View</a>
                                     {% if not customer.order_count %}<form method="post" action="{% url 'delete_customer' customer.id %}">
                                         {% csrf_token %}
-                                        <button class="button danger" type="submit">Delete</button>
+                                        <button class="button danger" type="submit" data-confirm-title="Delete customer" data-confirm="Are you sure you wish to delete this customer? This cannot be undone.">Delete</button>
                                     </form>{% endif %}
                                 </div>
                             </td>
@@ -102,4 +103,5 @@
             </div>
         {% endif %}
     </div>
+{% include 'crm/_pagination.html' %}
 {% endblock %}

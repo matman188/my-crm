@@ -64,6 +64,7 @@
                 approvedSubmitter = null;
             }
         } else {
+            window.crmUX?.allowNavigation();
             window.location.assign(trigger.href);
         }
     });

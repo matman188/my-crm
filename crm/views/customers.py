@@ -9,6 +9,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from .common import list_page, return_to_list, record_url
+
 from crm.forms import CustomerForm
 from crm.models import Customer, ServiceOrder
 
@@ -44,7 +46,7 @@ def customers(request):
         request,
         "crm/customers.html",
         {
-            "existing_customers": existing_customers,
+            **list_page(request, existing_customers, "existing_customers"),
             "search_query": search_query,
             "customer_status": customer_status,
         },
@@ -66,7 +68,7 @@ def create_customer(request):
                     raise
             else:
                 messages.success(request, f"Customer '{customer}' was created.")
-                return redirect("customers")
+                return return_to_list(request, "customers")
     else:
         form = CustomerForm()
 
@@ -107,7 +109,7 @@ def edit_customer(request, customer_id):
                     raise
             else:
                 messages.success(request, f"Customer '{customer}' was updated.")
-                return redirect("customers")
+                return return_to_list(request, "customers")
     else:
         form = CustomerForm(instance=customer)
 
@@ -116,7 +118,7 @@ def edit_customer(request, customer_id):
         "crm/customer_form.html",
         {
             "form": form,
-            "page_title": f"Edit Customer: {customer}",
+            "page_title": f"Customer: {customer}",
             "customer_delete_name": customer_delete_name,
             "customer_order_counts": customer_order_counts,
             "submit_label": "Save changes",
@@ -140,9 +142,9 @@ def delete_customer(request, customer_id):
         messages.error(
             request, "This customer is used on a service order and cannot be deleted."
         )
-        return redirect("customers")
+        return return_to_list(request, "customers")
     messages.success(request, f"Customer '{customer_name}' was deleted.")
-    return redirect("customers")
+    return return_to_list(request, "customers")
 
 
 @login_required
@@ -154,7 +156,7 @@ def archive_customer(request, customer_id):
         is_archived=True, updated_at=timezone.now()
     )
     messages.success(request, f"Customer '{customer}' was archived.")
-    return redirect("edit_customer", customer_id=customer.pk)
+    return redirect(record_url(request, "edit_customer", customer_id=customer.pk))
 
 
 @login_required
@@ -166,4 +168,4 @@ def restore_customer(request, customer_id):
         is_archived=False, updated_at=timezone.now()
     )
     messages.success(request, f"Customer '{customer}' was restored.")
-    return redirect("edit_customer", customer_id=customer.pk)
+    return redirect(record_url(request, "edit_customer", customer_id=customer.pk))

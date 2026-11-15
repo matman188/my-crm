@@ -3,7 +3,8 @@ from django.contrib.auth.decorators import login_required, permission_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
-from django.db.models import F, Prefetch, Q
+from django.db.models import F, Prefetch, Q, Value
+from django.db.models.functions import Concat
 from django.forms import IntegerField
 from django.http import HttpResponseBadRequest, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -19,6 +20,14 @@ from crm.forms.orders import (
     OrderFilterForm,
 )
 from crm.models import Customer, OrderItem, OrderServiceCharge, Service, ServiceOrder
+from crm.order_queries import (
+    WORK_VIEWS,
+    deadline_order,
+    with_deadlines,
+    work_condition,
+    work_counts,
+)
+from .common import record_url, return_to_list
 
 
 def _customer_entry(customer, order_id=None):
@@ -44,33 +53,33 @@ def orders(request):
     filters = OrderFilterForm(request.GET)
     valid_filters = filters.is_valid()
     query = filters.cleaned_data.get("q", "")
-    queryset = ServiceOrder.objects.select_related(
-        "customer", "assigned_to"
-    ).prefetch_related(
-        Prefetch("items", queryset=OrderItem.objects.select_related("product")),
-        Prefetch("charges", queryset=OrderServiceCharge.objects.select_related("item")),
+    queryset = with_deadlines(
+        ServiceOrder.objects.select_related("customer", "assigned_to").prefetch_related(
+            Prefetch("items", queryset=OrderItem.objects.select_related("product")),
+            Prefetch(
+                "charges", queryset=OrderServiceCharge.objects.select_related("item")
+            ),
+        )
     )
     if not valid_filters:
         queryset = queryset.none()
     else:
         if filters.cleaned_data["customer"]:
             queryset = queryset.filter(customer=filters.cleaned_data["customer"])
-        if filters.cleaned_data["status"]:
-            queryset = queryset.filter(status=filters.cleaned_data["status"])
-        if filters.cleaned_data["payment_status"]:
-            queryset = queryset.filter(
-                payment_status=filters.cleaned_data["payment_status"]
-            )
-        if filters.cleaned_data["collected"]:
-            queryset = queryset.filter(
-                collected=filters.cleaned_data["collected"] == "yes"
-            )
     if query:
+        queryset = queryset.alias(
+            customer_full_name=Concat(
+                "customer__first_name", Value(" "), "customer__last_name"
+            )
+        )
         conditions = (
             Q(customer__first_name__icontains=query)
             | Q(customer__last_name__icontains=query)
+            | Q(customer_full_name__icontains=query)
             | Q(customer__company__icontains=query)
             | Q(customer__email__icontains=query)
+            | Q(customer__primary_phone__icontains=query)
+            | Q(customer__secondary_phone__icontains=query)
             | Q(assigned_to__username__icontains=query)
             | Q(assigned_to__first_name__icontains=query)
             | Q(assigned_to__last_name__icontains=query)
@@ -84,6 +93,46 @@ def orders(request):
         ):
             conditions |= Q(pk=int(reference_number))
         queryset = queryset.filter(conditions)
+    counts = work_counts(queryset, request.user)
+    selected_view = filters.cleaned_data.get("view") or "all"
+    queryset = queryset.filter(work_condition(selected_view, request.user))
+    if valid_filters:
+        if filters.cleaned_data["status"]:
+            queryset = queryset.filter(status=filters.cleaned_data["status"])
+        if filters.cleaned_data["payment_status"]:
+            queryset = queryset.filter(
+                payment_status=filters.cleaned_data["payment_status"]
+            )
+        if filters.cleaned_data["collected"]:
+            queryset = queryset.filter(
+                collected=filters.cleaned_data["collected"] == "yes"
+            )
+    sort = filters.cleaned_data.get("sort") or "newest"
+    queryset = (
+        deadline_order(queryset)
+        if sort == "deadline"
+        else (
+            queryset.order_by("created_at", "pk")
+            if sort == "oldest"
+            else queryset.order_by("-created_at", "-pk")
+        )
+    )
+    quick_views = []
+    for key, label in WORK_VIEWS:
+        params = request.GET.copy()
+        for field in ("page", "status", "collected", "payment_status"):
+            params.pop(field, None)
+        params["view"] = key
+        if key in ("due_today", "overdue", "unassigned"):
+            params["sort"] = "deadline"
+        quick_views.append(
+            {
+                "label": label,
+                "count": counts[key],
+                "url": "?" + params.urlencode(),
+                "active": selected_view == key,
+            }
+        )
     pagination_query = request.GET.copy()
     pagination_query.pop("page", None)
     return render(
@@ -93,8 +142,10 @@ def orders(request):
             "page_obj": Paginator(queryset, 25).get_page(request.GET.get("page")),
             "search_query": query,
             "filter_form": filters,
+            "customer_filter": filters.cleaned_data.get("customer"),
             "filter_query": pagination_query.urlencode(),
             "has_filters": any(pagination_query.values()),
+            "quick_views": quick_views,
         },
     )
 
@@ -117,13 +168,22 @@ def _order_form(request, instance=None):
             ):
                 raise
         else:
-            messages.success(request, f"Order {order.reference} was saved.")
-            return redirect("edit_order", order_id=order.pk)
+            action = {
+                "submit": "submitted",
+                "complete": "marked Complete",
+                "cancel": "cancelled",
+                "reopen": "reopened",
+                "return_to_draft": "returned to Draft",
+                "restore_to_draft": "restored to Draft",
+            }.get(editor.form.action, "saved")
+            messages.success(request, f"Order {order.reference} was {action}.")
+            return redirect(record_url(request, "edit_order", order_id=order.pk))
     catalog = [
         {
             "id": service.pk,
             "name": service.name,
             "price": str(service.price),
+            "is_archived": service.is_archived,
             "products": [product.pk for product in service.products.all()],
         }
         for service in Service.objects.prefetch_related("products").order_by(
@@ -247,8 +307,8 @@ def delete_order(request, order_id):
             return HttpResponseForbidden("Only draft orders can be deleted.")
         if not claimed:
             messages.error(request, "The draft changed. Review it before deleting.")
-            return redirect("edit_order", order_id=order.pk)
+            return redirect(record_url(request, "edit_order", order_id=order.pk))
         reference = order.reference
         order.delete()
     messages.success(request, f"Draft {reference} was deleted.")
-    return redirect("orders")
+    return return_to_list(request, "orders")

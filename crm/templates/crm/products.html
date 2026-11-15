@@ -22,7 +22,7 @@
                 value="{{ search_query }}"
                 placeholder="Search by product, category, or linked service"
             >
-            <button class="button" type="submit">Search</button>
+            <select name="status" aria-label="Catalogue status"><option value="active"{% if catalog_status == 'active' %} selected{% endif %}>Active</option><option value="archived"{% if catalog_status == 'archived' %} selected{% endif %}>Archived</option><option value="all"{% if catalog_status == 'all' %} selected{% endif %}>All</option></select><button class="button" type="submit">Search</button>
             {% if search_query %}
                 <a class="button-link" href="{% url 'products' %}">Clear</a>
             {% endif %}
@@ -44,7 +44,7 @@
                     {% for product in existing_products %}
                         <tr>
                             <td>
-                                <div class="user-name">{{ product.name }}</div>
+                                <div class="user-name">{{ product.name }} {% if product.is_archived %}<span class="status-pill inactive">Archived</span>{% endif %}</div>
                                 {% if product.description %}
                                     <div class="user-email">{{ product.description|truncatechars:110 }}</div>
                                 {% endif %}
@@ -73,9 +73,10 @@
                             <td>
                                 <div class="button-row">
                                     <a class="button-link" href="{% url 'edit_product' product.id %}">Edit</a>
+                                    {% if perms.crm.change_product %}<form method="post" action="{% if product.is_archived %}{% url 'restore_product' product.id %}{% else %}{% url 'archive_product' product.id %}{% endif %}">{% csrf_token %}<button class="button secondary" type="submit" data-confirm="{% if product.is_archived %}Restore this product for new orders?{% else %}Archive this product? Existing orders will keep their details and prices.{% endif %}">{% if product.is_archived %}Restore{% else %}Archive{% endif %}</button></form>{% endif %}
                                     <form method="post" action="{% url 'delete_product' product.id %}">
                                         {% csrf_token %}
-                                        <button class="button danger" type="submit">Delete</button>
+                                        <button class="button danger" type="submit" data-confirm-title="Delete product" data-confirm="Are you sure you wish to delete this product? This cannot be undone.">Delete</button>
                                     </form>
                                 </div>
                             </td>
@@ -90,4 +91,5 @@
             </div>
         {% endif %}
     </div>
+{% include 'crm/_pagination.html' %}
 {% endblock %}

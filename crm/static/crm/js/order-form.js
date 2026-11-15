@@ -17,10 +17,19 @@
     };
     const field = (row, name) => row.querySelector(`[name="${row.dataset.formPrefix}-${name}"]`);
     const deleted = row => Boolean(field(row, "DELETE")?.checked);
+    const removed = [];
+    const disabledBeforeRemoval = new WeakMap();
+    const changed = () => editor.dispatchEvent(new Event("crm:changed", { bubbles: true }));
+    function removalFeedback() {
+        const feedback = editor.querySelector("[data-removal-feedback]");
+        feedback.hidden = removed.length === 0;
+        editor.querySelector("[data-removal-message]").textContent = `${removed.length} removed. Changes take effect when you save.`;
+    }
 
     function hideDeleted(row) {
         if (!deleted(row)) return;
         row.hidden = true;
+        disabledBeforeRemoval.set(row, [...row.querySelectorAll("input, select, textarea")].map(input => [input, input.disabled]));
         row.querySelectorAll("input, select, textarea").forEach(input => {
             if (input.type !== "hidden" && !input.name.endsWith("-DELETE")) input.disabled = true;
         });
@@ -34,10 +43,11 @@
             const item = row.closest("[data-order-item]");
             const productId = item ? Number(field(item, "product").value) : null;
             select.replaceChildren(new Option("Choose a service", ""));
-            catalog.filter(service => (locked && String(service.id) === row.dataset.originalService) || (general ? service.products.length === 0 : productId && (
+            catalog.filter(service => ((locked || general || String(productId) === item?.dataset.originalProduct) && String(service.id) === row.dataset.originalService) || (!service.is_archived && (general ? service.products.length === 0 : productId && (
                 service.products.length === 0 || service.products.includes(productId)
-            ))).forEach(service => {
-                const label = `${service.name} — ${currency} ${service.price}`;
+            )))).forEach(service => {
+                const captured = String(service.id) === row.dataset.originalService && row.dataset.originalPrice !== "";
+                const label = `${service.name}${service.products.length === 0 ? " (Global service)" : ""} — ${currency} ${captured ? row.dataset.originalPrice : service.price}${captured ? " (captured)" : ""}${service.is_archived ? " (archived)" : ""}`;
                 const option = new Option(label, String(service.id));
                 option.disabled = String(service.price).startsWith("-");
                 select.add(option);
@@ -48,8 +58,9 @@
 
     function recalculate() {
         let total = 0n;
-        editor.querySelectorAll("[data-order-item]").forEach((item, index) => {
-            item.querySelector("[data-item-heading]").textContent = `Item ${index + 1}`;
+        let visibleIndex = 0;
+        editor.querySelectorAll("[data-order-item]").forEach(item => {
+            if (!deleted(item)) item.querySelector("[data-item-heading]").textContent = `Item ${++visibleIndex}`;
             item.dataset.subtotal = "0";
         });
         editor.querySelectorAll("[data-charge]").forEach(row => {
@@ -89,6 +100,8 @@
         if (rows.lastElementChild.matches("[data-charge]")) populateServices(container);
         rows.lastElementChild.querySelector("select, input:not([type=hidden])")?.focus();
         recalculate();
+        changed();
+        return rows.lastElementChild;
     }
 
     editor.addEventListener("click", event => {
@@ -107,11 +120,67 @@
         } else if (button.matches("[data-add-charge]")) {
             const container = button.closest("[data-services]");
             appendRow(container, container.querySelector("[data-charge-template]"), "__charge__", container.querySelector("[data-service-rows]"), "[data-charge]");
+        } else if (button.matches("[data-duplicate-item]")) {
+            if (locked) return;
+            const original = button.closest("[data-order-item]");
+            const clone = original.cloneNode(true);
+            const oldPrefix = original.dataset.formPrefix;
+            clone.querySelectorAll("input, select, textarea").forEach((control, i) => {
+                const source = original.querySelectorAll("input, select, textarea")[i];
+                control.value = source.value;
+                if (control.type === "checkbox") control.checked = source.checked;
+            });
+            // Clone markup alone does not retain live select/textarea values.
+            clone.querySelectorAll("select").forEach(select => [...select.options].forEach(option => option.selected ? option.setAttribute("selected", "") : option.removeAttribute("selected")));
+            clone.querySelectorAll("textarea").forEach(control => { control.textContent = control.value; });
+            clone.querySelectorAll("input").forEach(control => { control.setAttribute("value", control.value); });
+            clone.querySelectorAll("[data-charge]").forEach(row => { row.dataset.originalService = ""; row.dataset.originalPrice = ""; });
+            clone.dataset.originalProduct = "";
+            if (original.dataset.productArchived === "true") {
+                const product = field(clone, "product");
+                product.value = "";
+                [...product.options].forEach(option => option.selected = option.value === "");
+                [...product.options].forEach(option => option.selected ? option.setAttribute("selected", "") : option.removeAttribute("selected"));
+            }
+            clone.querySelectorAll("input[name$='-id']").forEach(control => { control.value = ""; control.setAttribute("value", ""); });
+            clone.querySelectorAll("input[name$='-INITIAL_FORMS']").forEach(control => { control.value = "0"; control.setAttribute("value", "0"); });
+            clone.querySelectorAll("input[name$='-item']").forEach(control => { control.value = ""; control.setAttribute("value", ""); });
+            clone.querySelectorAll("[data-charge]").forEach(row => {
+                if (deleted(row)) row.remove();
+            });
+            // Keep management indexes intact; removed cloned rows become empty extras.
+            const markup = clone.outerHTML.replaceAll(oldPrefix, "items-__copy_item__");
+            const added = appendRow(editor, { innerHTML: markup }, "__copy_item__", editor.querySelector("[data-item-rows]"), "[data-order-item]");
+            if (added) { populateServices(added); recalculate(); changed(); window.crmUX?.notify("Item duplicated using current service prices. Check the product, services and deadline before saving."); }
+        } else if (button.matches("[data-apply-deadline]")) {
+            const date = editor.querySelector("[data-bulk-date]");
+            const time = editor.querySelector("[data-bulk-time]");
+            if (!date.value || !date.checkValidity() || !time.checkValidity()) {
+                date.setCustomValidity(date.value ? "" : "Choose a due date first."); date.reportValidity(); date.setCustomValidity(""); return;
+            }
+            editor.querySelectorAll("[data-order-item]").forEach(row => {
+                if (deleted(row) || field(row, "due_date").disabled) return;
+                field(row, "due_date").value = date.value;
+                field(row, "due_time").value = time.value;
+            });
+            changed();
+            window.crmUX?.notify("Deadline applied to all items. Save the order to keep it.");
+        } else if (button.matches("[data-undo-removal]")) {
+            const row = removed.pop();
+            if (!row) return;
+            field(row, "DELETE").checked = false;
+            row.hidden = false;
+            (disabledBeforeRemoval.get(row) || []).forEach(([input, disabled]) => { input.disabled = disabled; });
+            removalFeedback(); recalculate(); changed();
+            row.querySelector("select:not(:disabled), input:not(:disabled):not([type=hidden]), textarea:not(:disabled)")?.focus();
         } else if (button.matches("[data-remove-charge], [data-remove-item]")) {
             const row = button.closest(button.matches("[data-remove-item]") ? "[data-order-item]" : "[data-charge]");
             field(row, "DELETE").checked = true;
             hideDeleted(row);
+            removed.push(row);
+            removalFeedback();
             recalculate();
+            changed();
         }
     });
 
@@ -121,7 +190,13 @@
     });
     editor.addEventListener("input", recalculate);
 
-    editor.querySelectorAll("[data-order-item], [data-charge]").forEach(hideDeleted);
+    editor.querySelectorAll("[data-order-item], [data-charge]").forEach(row => {
+        if (deleted(row)) {
+            hideDeleted(row);
+            if (!row.parentElement.closest("[data-order-item][hidden]")) removed.push(row);
+        }
+    });
+    removalFeedback();
     populateServices(editor);
     recalculate();
 })();

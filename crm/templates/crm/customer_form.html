@@ -1,5 +1,6 @@
 {% extends "crm/base.html" %}
 {% load static %}
+{% load contact %}
 
 {% block title %}{{ page_title }}{% endblock %}
 {% block page_title %}{{ page_title }}{% endblock %}
@@ -11,10 +12,11 @@
             <h2>{{ page_title }}</h2>
             <p class="meta">{{ form_description }}</p>
         </div>
-        <a class="button-link" href="{% url 'customers' %}">Back to customers</a>
+        <a class="button-link" href="{% if return_to %}{{ return_to }}{% else %}{% url 'customers' %}{% endif %}">Back to customers</a>
     </div>
 
     {% if form.instance.pk %}
+    <p class="contact-links"><a href="mailto:{{ form.instance.email }}">Email customer</a><a href="tel:{{ form.instance.primary_phone|telephone }}">Call customer</a></p>
     {% if form.instance.is_archived %}<p class="customer-archive-notice" role="status">This customer is archived. Their details and orders are kept. Restore the customer to select them for new orders.</p>{% endif %}
     <section class="panel customer-order-summary" aria-label="Customer orders">
         <dl class="customer-order-counts">

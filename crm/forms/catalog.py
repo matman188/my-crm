@@ -1,4 +1,5 @@
 from django import forms
+from django.db.models import Q
 
 from crm.models import Product, ProductCategory, Service, SystemSettings
 
@@ -12,7 +13,23 @@ class ProductCategoryForm(forms.ModelForm):
         }
 
 
-class ProductForm(forms.ModelForm):
+class CatalogDetailsForm(forms.ModelForm):
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if commit:
+            fields = [
+                name
+                for name in self.Meta.fields
+                if not instance._meta.get_field(name).many_to_many
+            ]
+            instance.save(
+                update_fields=[*fields, "updated_at"] if instance.pk else None
+            )
+            self.save_m2m()
+        return instance
+
+
+class ProductForm(CatalogDetailsForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["category"].queryset = ProductCategory.objects.order_by("name")
@@ -26,7 +43,7 @@ class ProductForm(forms.ModelForm):
         }
 
 
-class ServiceForm(forms.ModelForm):
+class ServiceForm(CatalogDetailsForm):
     products = forms.ModelMultipleChoiceField(
         queryset=Product.objects.none(),
         required=False,
@@ -35,7 +52,13 @@ class ServiceForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        product_queryset = Product.objects.select_related("category").all()
+        product_queryset = (
+            Product.objects.select_related("category")
+            .filter(Q(is_archived=False) | Q(services=self.instance.pk))
+            .distinct()
+            if self.instance.pk
+            else Product.objects.select_related("category").filter(is_archived=False)
+        )
         self.fields["products"].queryset = product_queryset.order_by("name", "id")
         self.product_groups = self._build_product_groups(product_queryset)
         currency_code = SystemSettings.get_solo().default_currency
@@ -62,7 +85,8 @@ class ServiceForm(forms.ModelForm):
                 {
                     "id_for_label": f"id_products_{product.id}",
                     "value": str(product.id),
-                    "label": product.name,
+                    "label": product.name
+                    + (" (archived)" if product.is_archived else ""),
                     "checked": str(product.id) in selected_product_ids,
                 }
             )
@@ -73,7 +97,8 @@ class ServiceForm(forms.ModelForm):
                     "name": group_name,
                     "products": products,
                     "count": len(products),
-                    "is_open": any(product["checked"] for product in products) or index == 0,
+                    "is_open": any(product["checked"] for product in products)
+                    or index == 0,
                 }
             )
 
@@ -83,10 +108,18 @@ class ServiceForm(forms.ModelForm):
         field_name = self.add_prefix("products")
 
         if self.is_bound:
-            return set(self.data.getlist(field_name))
+            values = (
+                self.data.getlist(field_name)
+                if hasattr(self.data, "getlist")
+                else self.data.get(field_name, [])
+            )
+            return {str(value) for value in values}
 
         if self.instance.pk:
-            return {str(product_id) for product_id in self.instance.products.values_list("id", flat=True)}
+            return {
+                str(product_id)
+                for product_id in self.instance.products.values_list("id", flat=True)
+            }
 
         initial_products = self.initial.get("products", [])
         return {str(product_id) for product_id in initial_products}
