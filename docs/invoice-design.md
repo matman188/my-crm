@@ -1,0 +1,163 @@
+# Next milestone: invoice design and delivery
+
+Recorded: 15 November 2026. Status: planning handover; invoicing is not implemented.
+
+This records the latest proposed approach discussed with the owner. Use it with
+[scope section 6](scope-of-work.md#6-invoices-pdf-layout-and-email) and
+[development status](development-status.md). Start next time with business invoice
+settings and a sample PDF, then implement issuance and storage. Connect email
+delivery after the mail server is configured.
+
+## Recommended approach
+
+Keep invoice actions on the service-order screen, backed by a small Invoice
+record and its stored PDF. The operator does not manually maintain a duplicate
+order or need a separate invoice-management screen for the first version.
+
+The order is the working record. An issued invoice preserves the billing details
+at a particular point in time. Current orders capture service prices and currency,
+but customer details and product/service names still come from mutable records.
+Returning to Draft also permits commercial changes. Generating every download
+from the current order could therefore produce a different document later.
+
+Capture automatically when issuing:
+
+- A unique invoice number, issue date/time, issuing user and service-order link.
+- Business identity, customer billing details, and product/service descriptions.
+- Product grouping, service quantities, captured unit prices, currency, line
+  totals, subtotal and any agreed tax breakdown, and total.
+- Payment due date/terms, banking instructions, disclaimer and customer-facing
+  Invoice Note. Keep the terms and instructions used at issue time.
+- The template version and a reference to the issued PDF file.
+- The information needed to retain voided/replaced invoices, once the correction
+  process has been agreed. Prefer one active invoice per order initially.
+
+Use structured invoice/line snapshots as well as the stored PDF. Store the file
+through application-managed storage, with a reference in the database, rather
+than putting the PDF bytes into ordinary database columns. Local private file
+storage is sufficient initially; keep downloads behind authenticated permissions.
+Back up the database and invoice files together. Reprints, previews and email
+attachments use the original issued file. Changes to business settings or the
+PDF template affect future invoices.
+
+## Proposed order-screen actions
+
+| Action | Behaviour |
+| --- | --- |
+| Preview invoice | Render the current draft as an actual PDF, clearly marked Preview. Do not allocate an invoice number or create an issued invoice. A temporary preview can be generated on demand. |
+| Generate invoice | Explicit action after order submission. Capture the billing snapshot, allocate a unique number and store the PDF. Agree eligible stages before implementing; In Progress/Complete are the proposed starting point, with no first issue on a Cancelled order. |
+| View / Download / Print | Reuse the issued PDF. Repeated clicks do not issue another invoice or change its number. Display invoice number and issue date on the order. |
+| Email invoice | Later, open a recipient/subject/message review and send the stored PDF. Record the actual recipient, sender, time and result of each attempt. |
+
+This explicit Generate action is the latest working proposal and supersedes the
+earlier automatic-on-Submit assumption in the implementation plan. Submit still
+starts work by moving Draft to In Progress. Confirm the final issuance trigger
+before implementation; no current submission behaviour has been changed.
+
+Issuance must be safe under repeat clicks and concurrent requests. Do not mark an
+invoice as successfully issued until its snapshot and PDF are available. Agree
+retry/recovery behaviour for file-generation failures; repeated attempts must not
+create duplicate issued invoices. Previewing is never an issuance action.
+
+## PDF layout
+
+Start with one polished A4 template, reviewed using a sample PDF before finalizing
+the implementation. An HTML/CSS template rendered to PDF is the proposed approach.
+Select the renderer after checking the existing Windows/Python development setup,
+deployment requirements, fonts and multi-page output; no library is selected yet.
+
+1. Header: business logo and details, invoice number and issue date.
+2. Customer block: customer billing details, service-order reference and payment
+   due date where configured.
+3. Charges: each product as a section heading with its service rows underneath.
+   Service rows show quantity, unit price and line total. Products have no quantity
+   field. Preserve repeated service occurrences in the billed lines/quantities.
+4. Order-wide extras: a separate group after the item/service groups.
+5. Totals: subtotal and any agreed tax breakdown, prominent total and currency.
+6. Footer: banking details, payment-reference instructions, terms, disclaimer and
+   an explicitly customer-facing Invoice Note when supplied.
+
+Repeat table headings on long invoices, keep amounts aligned and readable, and
+handle page breaks and page numbering consistently. Avoid splitting a service
+row where practical. Preview must show the actual generated PDF, so preview and
+download/print use the same document.
+
+Order Notes, Customer Notes, item notes and service-occurrence notes are internal
+and must be excluded from both the PDF and customer email. Add a separate Invoice
+Note for content intentionally addressed to the customer. Whether to show work
+deadlines remains open; if included, snapshot their issue-time values and clearly
+distinguish them from the payment due date. Later operational deadline changes
+must not silently rewrite the invoice.
+
+## Business settings versus fixed formatting
+
+| Configurable by the business | Controlled by the application |
+| --- | --- |
+| Business name, logo, address and contact details | Overall layout and placement of blocks |
+| Applicable registration/tax identifiers, once confirmed | Required document identifiers and order reference |
+| Banking details and payment instructions | Amount calculations, rounding, alignment and currency formatting |
+| Payment terms and default payment due period | Table columns, fonts, spacing and page-break rules |
+| Disclaimer, default customer-facing footer/Invoice Note | Clear separation of internal and customer-facing content |
+| One controlled accent colour | Readable print styling and image sizing |
+| Agreed invoice prefix/numbering configuration | Unique numbers, historical references and safe repeat issuance |
+| Email subject/message defaults | Correct issued PDF attachment and delivery history |
+
+Currency and business timezone already exist in settings; retain their current
+roles and snapshot invoice currency. Exact invoice numbering rules and whether
+prefix changes should be permitted after first issue still need agreement.
+No arbitrary HTML editor, drag-and-drop layout builder, or multiple themes are
+planned for this first version. Tax status, tax calculations and final disclaimer
+wording must be confirmed for the business; do not infer them from the currency.
+
+## Corrections and cancellation: decide before issuing invoices
+
+The current Return to draft action allows customer, product, service, quantity and
+charge changes. Issued invoices introduce a new integrity rule that is not yet
+implemented. Agree the correction process before enabling invoice issuance.
+
+Recommended starting point: retain the original issued invoice and require an
+explicit replacement process for changes to invoiced content. Preserve the old
+document, number, reason, actor and relationship to its replacement. Prevent an
+ordinary Return to draft/save from silently changing financial details while an
+active invoice still represents the previous values. The precise void/reissue,
+credit and already-paid-order rules remain open (scope D07).
+
+Operational deadlines, assignment, collection and internal notes can continue to
+follow their existing order-stage rules without rewriting the issued document.
+Order Notes remain editable in every state. Current Paid/Unpaid/Refunded fields
+remain manual indicators until the separate payment-record milestone; they must
+not silently alter an issued PDF. Order cancellation must retain invoice history;
+its financial treatment and any refund handling need explicit agreement.
+
+## Email delivery later
+
+Prepare the customer-facing recipient/subject/message preview and use the issued
+PDF as the attachment. Agree the sender/provider and connect delivery when the
+email server is available. Do not report a successful send before delivery is
+configured. Development backends can test message construction without sending
+real customer email. A failed send can be retried without issuing a new invoice.
+Keep credentials outside source control and ordinary business settings.
+
+## Resume here next time
+
+1. Confirm the explicit Generate invoice trigger, eligible order stages, and the
+   correction/cancellation rules (D07) before implementing issuance.
+2. Gather real business/logo/contact/banking details, payment terms, numbering
+   preference, applicable tax details and approved disclaimer text (D06). Use
+   clearly labelled sample data while designing; do not invent final details.
+3. Build business invoice settings and one sample A4 PDF. Review short and long
+   invoices, repeated services, extras, long names, currency and page breaks.
+4. Implement the Invoice/line snapshots, unique numbering, stored private PDF and
+   duplicate/concurrent-generation protection, including failure recovery.
+5. Add Preview, Generate, View, Download and Print on orders. Verify old invoices
+   survive changes to customers, catalogue, settings, notes and operational dates.
+6. Add the email review/delivery history flow, connecting actual sending when the
+   mail server is configured (D08).
+
+No invoice models, migrations, settings, generation, preview, PDF storage or email
+delivery were implemented as part of this documentation update.
+
+## Technical references
+
+- [Django file fields and storage](https://docs.djangoproject.com/en/6.0/ref/models/fields/#filefield)
+- [Django email attachments and development backends](https://docs.djangoproject.com/en/6.0/topics/email/)

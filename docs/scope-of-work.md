@@ -6,6 +6,9 @@ not indicate that the features below have already been implemented.
 See [development status](development-status.md) for delivered features and current
 implementation choices.
 
+See [invoice design and delivery](invoice-design.md) for the latest proposed
+invoice architecture, PDF layout/settings and checklist for the next session.
+
 Created: 14 November 2026  
 Primary example: Ballet shoe sewing service  
 Application: My CRM
@@ -54,7 +57,7 @@ customer's physical items; its invoice is a separate billing record.
 | Draft disposal | Delete draft permanently removes a saved Draft and its items/service charges; Discard leaves an unsaved draft. Cancel order is available only in In Progress and retains the Cancelled order. |
 | Status controls | Show the current status in a clear, labelled badge near the order heading, alongside the total and currency. Only stage-specific action buttons can change Status, with allowed transitions enforced on the server. |
 | Completion | A user must be set in Assigned To before the order can be marked Complete. |
-| Invoice trigger | Confirming an order generates its invoice. |
+| Invoice trigger | Latest proposal: explicit Generate invoice after submission, with a non-issuing draft preview. This refines the earlier automatic-on-Submit assumption; confirm the final trigger and eligible stages before implementation (section 6). |
 | Invoice delivery | The invoice can be printed or emailed to the customer. |
 
 The detailed defaults and controls proposed below remain recommendations unless
@@ -99,10 +102,13 @@ services during order entry still need to be implemented explicitly.
 6. The operator saves the draft. Assigned To, Payment status, and Collected remain
    read-only while the saved order is Draft.
 7. The operator reviews and submits the order, moving it from Draft to In
-   Progress. The application assigns its invoice number and generates an invoice
-   using the confirmed information. Confirmation is an action, not another status.
-8. The invoice is downloaded/printed or emailed. Work is tracked using the single
-   status on the whole order.
+   Progress. Under the latest invoice proposal, submission starts work; the
+   operator uses Generate invoice as a separate explicit action after submission.
+   A draft PDF preview does not allocate a number or issue an invoice.
+8. Generate invoice captures the billing information, allocates its invoice
+   number and stores the PDF. The issued file is viewed/downloaded/printed and,
+   once mail delivery is connected, explicitly emailed. Work retains its single
+   order status. Confirm eligible issuance stages before implementation.
 9. The supervisor assigns or reassigns the worker as needed and monitors deadlines.
 10. When the work is finished, an authorized user manually marks the order Complete.
     A user must be assigned before this change can be saved.
@@ -259,8 +265,9 @@ invented midnight deadline.
 - Recommended first version: fixed monetary service prices. Percentage surcharges,
   automatic rush rules, discounts, and product-specific price overrides need
   separate agreement before inclusion.
-- Keep money in decimal values. Snapshot prices and currency on confirmation so
-  later catalog price or default currency changes do not alter existing invoices.
+- Keep money in decimal values and retain captured order prices and currency.
+  Snapshot invoice amounts and currency at issuance so later catalogue price or
+  default currency changes do not alter issued invoices.
 
 ### 5.4 Assignment and staff workload
 
@@ -348,34 +355,57 @@ operation is implemented; cancellation must not silently erase financial records
 
 ## 6. Invoices, PDF layout, and email
 
-### 6.1 Confirmation and invoice integrity
+### 6.1 Issuance and invoice integrity
 
-- Generate one uniquely numbered invoice when an order is confirmed. Confirmation
-  must be atomic and safe to retry: repeated clicks must not create duplicate
-  invoices or consume the same number for different invoices.
-- Confirmation is the first Draft-to-In Progress transition; it does not introduce
-  a Confirmed status. Subsequent status changes do not issue another invoice.
+The latest proposed design, recorded 15 November 2026, is detailed in
+[invoice design and delivery](invoice-design.md). This is future work. Explicit
+generation refines the earlier automatic issuance on submission; confirm the
+final trigger and eligible stages before implementing it.
+
+- Use a small Invoice record linked to the service order, with structured line
+  and billing snapshots and an application-managed stored PDF. Manage the invoice
+  from the order screen without a second manually maintained billing form.
+- Provide a clearly marked draft Preview without allocating an invoice number.
+- Generate one uniquely numbered active invoice per order through an explicit
+  Generate invoice action after submission. In Progress/Complete are the proposed
+  eligible stages; no first issue on Cancelled is proposed. Correction/replacement
+  records require the separately agreed process below.
+- Issuance must be safe under repeat clicks, concurrent requests and file-generation
+  failures: no duplicate issued invoices or reused numbers for different invoices.
+  Confirm success only when the billing snapshot and issued PDF are available.
+- Submit remains the Draft-to-In Progress transition and does not introduce a
+  Confirmed status. Normal saves and subsequent status changes do not issue invoices.
 - Preserve a snapshot of the customer billing details, business invoice settings,
-  service descriptions, quantities, prices, currency, and totals at issue time.
-- Reprinting or emailing an invoice reuses that issued invoice, rather than
-  rebuilding its commercial contents from subsequently edited catalog/settings
-  records. Payment information may be displayed as a separate current status.
-- Agree on the correction/void/reissue process before permitting financial edits
-  to a confirmed order. Do not silently overwrite issued invoices.
+  product/service descriptions, quantities, prices, currency, totals, payment terms,
+  banking details, disclaimer and customer-facing note at issue time. Retain invoice
+  number, issue time, issuing user, order reference and template version.
+- View, download, print and email reuse the original stored PDF. Setting, customer,
+  catalogue and template changes apply to future invoices. Display current payment
+  status separately without silently rewriting the issued file.
+- Keep files in application-managed storage with database references, authenticated
+  access and coordinated database/file backups. Do not store ordinary public links
+  to customer invoices or treat the PDF alone as the financial record.
+- Agree on correction/void/reissue and already-paid-order rules before enabling
+  invoice issuance. Return to Draft currently permits financial edits; it will need
+  an explicit guard/correction flow when an active invoice exists. Preserve the
+  original document, number, reason, actor and replacement relationship. No silent
+  overwriting or deletion of issued invoices. These guards are not implemented yet.
 
 ### 6.2 Proposed invoice contents
 
 - Business name, logo, address, and contact details.
 - Customer name, contact/billing details, and relevant business identifiers.
 - Invoice number and issue date, order reference, and payment due date/terms.
-- Item descriptions, selected services, quantities/units, unit prices, line totals,
+- Product sections with service rows, service quantities, unit prices, line totals,
   general charges, subtotal, applicable tax breakdown, currency, and invoice total.
 - Banking/payment instructions and payment reference guidance.
 - Customer-facing notes, disclaimers, and terms.
-- Relevant service deadlines where useful, separate from the payment due date.
+- Whether to show service deadlines is open. If shown, snapshot their issue-time
+  values and distinguish them from the payment due date; later operational edits
+  must not rewrite the invoice.
 - Repeated services must be reflected in the billed quantities or lines and totals.
-  Internal service occurrence notes and order-wide notes are excluded; only
-  explicitly customer-facing invoice notes are included.
+  Order Notes, Customer Notes, item notes and service occurrence notes are internal
+  and excluded; only a separate, explicitly customer-facing Invoice Note is included.
 - Page numbering and consistent headers/footers on multi-page documents.
 
 Tax registration, invoice wording, numbering requirements, and tax calculations
@@ -386,11 +416,12 @@ This scope does not establish tax or legal compliance requirements.
 
 | Business-configurable content | Application-controlled structure |
 | --- | --- |
-| Name, logo, address, contact information, applicable registration details | Clear placement of invoice identity, customer block, lines, and totals |
-| Banking details and payment instructions | Consistent amounts, currency formatting, pagination, and readable print layout |
-| Customer-facing disclaimer, terms, and default invoice note | Escaping/validation of text; no arbitrary executable HTML templates |
+| Name, logo, address, contact information, applicable registration/tax details | Fixed placement of invoice identity, customer block, product/service groups, extras and totals |
+| Banking details and payment instructions | Amount calculations, rounding, currency formatting and alignment |
+| Customer-facing disclaimer, terms and default Invoice Note | Separate internal/customer-facing content; no arbitrary executable HTML templates |
+| One controlled accent colour | Fonts, spacing, logo sizing, readable A4 print layout, repeated headings, page breaks and numbering |
 | Default currency and business timezone | Historical snapshots so setting changes affect future invoices |
-| Agreed invoice prefix/numbering settings and default payment terms | Uniqueness and integrity of issued invoice numbers |
+| Agreed invoice prefix/numbering settings, payment terms and default due period | Uniqueness and integrity of invoice numbers and payment-date calculations |
 | Email subject/body defaults | Correct invoice attachment and delivery history |
 
 Start with one polished, branded invoice template. Review a sample PDF with the
@@ -401,11 +432,15 @@ template designer and multiple layout themes are outside the initial scope.
 
 ### 6.4 Printing and emailing
 
-- Provide PDF preview/download and printing from the invoice view.
+- Provide Preview/Generate/View/Download/Print actions on the order. Preview uses
+  the actual rendered PDF; issued previews and downloads reuse the stored file.
 - Provide an explicit email action with recipient, subject/body preview, and the
-  correct invoice PDF attached. Automatic sending on confirmation is not assumed.
-- Record send attempts, recipient, timestamp, result, and sender; support retry
-  after failure. Email failure must not undo confirmation or generate a new invoice.
+  correct invoice PDF attached. Automatic sending on generation is not assumed.
+- Connect actual email sending later, when the mail server/provider is configured.
+  Development backends can test message construction without real delivery; do not
+  present an email as sent before delivery is configured.
+- Record send attempts, actual recipient, timestamp, result, and sender; support
+  retry after failure. Email failure must not undo issuance or generate a new invoice.
 - Keep email provider credentials outside source control and ordinary business
   settings screens. Do not put credentials into invoice documents or logs.
 
@@ -486,7 +521,7 @@ These are planning concepts, not a final database schema:
 | ServiceOrder | Customer, reference, four-value Status, Collected checkbox, Payment status, assigned user, key dates, and order-wide internal notes |
 | OrderItem | Customer product/type, optional item notes, deadline date with optional time; no item status, progress, collection, label, or product quantity |
 | OrderServiceCharge | One selected service occurrence, item-or-order scope, charge quantity, captured price, and optional internal text note; repeated occurrences are allowed |
-| Invoice / InvoiceLine | Issued identity and financial/business/customer snapshots |
+| Invoice / InvoiceLine | Linked order, issued identity, actor, financial/business/customer snapshots, template version, stored PDF reference and agreed correction relationships |
 | Payment | Full settlement amount, date, method, reference, and correction history |
 | OrderEvent | Who changed an operational state, when, and why |
 | InvoiceEmailAttempt | Recipient, send result, timestamp, and retry history |
@@ -500,8 +535,10 @@ These are planning concepts, not a final database schema:
    price totals.
 2. **Work management:** the four whole-order statuses, Collected checkbox, separate
    Payment status field, assignment/reassignment, permissions, and change history.
-3. **Invoices:** confirmation, numbering and snapshots, business invoice settings,
-   approved PDF sample, download/print, email configuration, and delivery history.
+3. **Invoices:** agree issuance/correction rules; start with business invoice
+   settings and an approved sample A4 PDF. Then add invoice/line snapshots, unique
+   numbering, stored PDF, explicit generation and preview/view/download/print.
+   Add email review/history and connect delivery when the mail server is configured.
 4. **Settlement:** full-payment recording and corrections behind Payment status,
    cancellation rules, and financial history. No separate closure workflow.
 5. **Visibility and release:** dashboard, filtered reports/CSV, workflow tests,
@@ -519,7 +556,8 @@ These phases are a suggested implementation order, not a time or cost estimate.
    charge is counted once and is visibly distinct from item-level services.
 4. An order can be saved and confirmed while unassigned. A supervisor assigns and
    later reassigns a user, with the changes recorded.
-5. Repeated confirmation does not create duplicate invoices. Changing catalog
+5. Draft preview does not issue or number an invoice. Repeated/concurrent Generate
+   requests do not create duplicate issued invoices. Changing catalog
    prices, customer details, or banking settings does not rewrite an issued invoice.
 6. A long invoice with multiple items/services prints legibly across pages and can
    be emailed. A failed email can be retried without another invoice being issued.
@@ -606,8 +644,10 @@ collection tracking.
 | --- | --- | --- |
 | D05 | Who can create/confirm orders, change Status or Collected, assign workers, record payment, and see finances? | Agree the operator/worker/supervisor permissions before adding roles or changing existing ones. |
 | D06 | Which business and tax details, payment terms, invoice numbering, and disclaimers are needed? | Review actual business details and a sample invoice; do not invent tax status or final disclaimer wording. |
-| D07 | How are confirmed orders corrected, cancelled, or refunded? | Preserve issued records and record reasons; agree void/reissue/credit behavior before financial edits are allowed. |
-| D08 | Which email sender/provider should deliver invoices, and is sending always manual? | Explicit send with a preview initially; store provider credentials securely outside the repository. |
+| D07 | How are invoiced orders corrected, returned to Draft, cancelled, or refunded, including already-paid orders? | Preserve issued PDFs/numbers and record reasons; agree explicit replacement/void/reissue/credit behaviour and guard ordinary financial edits before enabling issuance. |
+| D08 | Which email sender/provider should deliver invoices when the mail server is connected? | Plan explicit sending after recipient/subject/message review, with delivery history and retries; keep credentials outside the repository. |
+| D12 | Confirm the final invoice trigger and eligible stages. | Latest proposal: non-issuing draft preview, then explicit Generate after submission in In Progress/Complete. This refines the original automatic-on-Submit assumption. |
+| D13 | Should work deadlines appear on invoices? | Keep operational deadlines separate from payment due dates; if shown, snapshot their issue-time values. |
 | D10 | What dates and worker attribution should financial reports use? | Separate invoice-date sales and payment-date receipts; current worker for workload, with historical attribution agreed separately. |
 | D11 | What target date/time does an overnight request mean for the business? | Let the operator enter the agreed deadline and optional time; do not silently calculate one from the service name. |
 
@@ -619,6 +659,7 @@ requirements so planned features are not mistaken for delivered functionality.
 
 | Date | Decision/change |
 | --- | --- |
+| 15 November 2026 | Recorded the next invoicing design in invoice-design.md: small Invoice record plus billing snapshots and stored PDF, actions on the order, proposed explicit Generate after submission and non-issuing draft preview, one A4 layout with configurable business content, fixed formatting, and email connection later. Updated the working plan to replace the earlier automatic-on-Submit assumption; trigger/stages, correction rules and deadline display remain explicit open decisions. No invoice functionality was implemented. |
 | 15 November 2026 | Made Order Notes editable in every order state, including Complete. Notes can be updated or cleared without reopening; item/service notes and other stage locks retain their existing rules. |
 | 15 November 2026 | Accepted and implemented the QOL pass: safe forms and confirmations, order work queues and business-timezone deadline rules, workload dashboard, preserved list navigation, item duplication/bulk deadlines/undo, catalogue archiving, staff deactivation/history protection, directory pagination and contact links. These retain the existing stages and locks. See qol-improvements.md for behaviour and checks. |
 | 14 November 2026 | Initial scope captured from the business workflow. Confirmed manual closure, full payment only, and one business per installation initially. |

@@ -356,6 +356,20 @@ deactivation/deletion protection, contact links and directory pagination. See
 behaviour, migration and verification details, and browser-tool setup.
 
 Invoice/PDF/email generation, full-payment records, finer permissions and change
-history, and financial dashboards/reports remain to be implemented. The planned invoice
-confirmation action will integrate with the Draft-to-In Progress transition.
-Currently, saving or changing an order's status does not issue an invoice.
+history, and financial dashboards/reports remain to be implemented. Currently,
+saving or changing an order's status does not issue an invoice.
+
+The next milestone is [invoice design and delivery](invoice-design.md), captured
+on 15 November 2026. The latest proposal is a small Invoice record with immutable
+billing snapshots and a stored PDF, managed from the order. Preview does not issue
+or number an invoice; explicit Generate after submission replaces the earlier
+automatic-on-Submit assumption in the working plan. Confirm the final trigger
+and eligible stages before implementation. View/download/print and later email
+reuse the issued PDF.
+
+Start with business invoice settings and a sample A4 PDF. The handover specifies
+configurable content versus fixed layout, internal-note exclusions, numbering and
+storage expectations, and a resume checklist. Agree how invoiced orders may be
+corrected/returned to Draft before implementing issuance. Connect email delivery
+later when the mail server is configured. These are planned changes; no invoicing
+code was implemented in this documentation update.

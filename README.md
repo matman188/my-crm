@@ -16,6 +16,10 @@ pricing rules, setup instructions, and remaining milestones.
 The [QOL implementation notes](docs/qol-improvements.md) describe work queues,
 archiving, safer forms, order-entry shortcuts and browser-tool setup.
 
+Next milestone: [invoice design and delivery](docs/invoice-design.md), covering
+the proposed Invoice record, stored PDF, layout/configuration, order actions,
+open correction rules and a checklist for resuming development.
+
 For development checks, run `python manage.py test crm.tests --noinput`.
 Install Node test dependencies with `npm ci`, then run `npm test` for JavaScript
 checks; the Django suite also uses them to exercise rendered order forms. Node
