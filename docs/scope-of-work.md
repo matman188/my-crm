@@ -30,7 +30,9 @@ customer's physical items; its invoice is a separate billing record.
 
 | Topic | Decision |
 | --- | --- |
-| Order closure | Closure is a manual action. Payment must be settled before an order can be closed; payment does not close it automatically. |
+| Order status | One status for the whole order: Draft, In Progress, Complete, or Cancelled. No item-level progress/status tracking. |
+| Collected (D09) | A separate order-level checkbox, unchecked by default, editable only while the saved order is Complete. No per-item or partial collection tracking. |
+| Payment status | A separate order-level field: Unpaid, Paid, or Refunded, editable only in In Progress and Complete. Refunded is a manual indicator; full payment only in the first version. |
 | Payments in the first version | Full payment only. Deposits, partial payments, and payment instalments are outside the initial scope. |
 | Business setup | One business per installation initially. The software should be reusable for other businesses through configuration. |
 | Customer selection | A single searchable dropdown shows clickable matches. A Create New button opens a customer modal while retaining the order being entered. |
@@ -42,7 +44,12 @@ customer's physical items; its invoice is a separate billing record.
 | Additional charges | Additional requests, such as overnight turnaround, can be represented as services. |
 | Global services | Some services must be available without a link to a specific product. |
 | Deadlines (D02) | Each order item has its own deadline date, with an optional time in the business timezone. |
-| Assignment | One user is assigned to an order; assignment may happen at creation or later. |
+| Assignment | Assigned To and Assign to Me are editable only in In Progress and Complete. A user must be assigned before Complete. |
+| Order editing | Customer selection, products, services, and quantities are editable only in Draft. Deadlines, optional times, and internal order/item/service notes are also editable in In Progress without changing charges or invoice data. Complete locks these details until reopened. Cancelled permits only Order Notes, for example a cancellation reason; other fields stay locked until restored. Collected is editable only in Complete. |
+| Submission | A Submit button saves the draft and moves it to In Progress. Draft field locks still apply during this request, so assignment/payment edits happen afterwards. |
+| Draft disposal | Delete draft permanently removes a saved Draft and its items/service charges; Discard leaves an unsaved draft. Cancel order is available only in In Progress and retains the Cancelled order. |
+| Status controls | Show the current status in a clear, labelled badge near the order heading, alongside the total and currency. Only stage-specific action buttons can change Status, with allowed transitions enforced on the server. |
+| Completion | A user must be set in Assigned To before the order can be marked Complete. |
 | Invoice trigger | Confirming an order generates its invoice. |
 | Invoice delivery | The invoice can be printed or emailed to the customer. |
 
@@ -85,16 +92,25 @@ services during order entry still need to be implemented explicitly.
    deadline date with an optional time.
 5. The operator adds any general extra services, such as an order-wide overnight
    surcharge, and any order-wide notes. The application calculates the total.
-6. A worker may be assigned immediately or the order may remain unassigned.
-7. The operator reviews and confirms the order. The application assigns its
-   invoice number and generates an invoice using the confirmed information.
-8. The invoice is downloaded/printed or emailed. Work can then be started and
-   completion tracked per order item.
+6. The operator saves the draft. Assigned To, Payment status, and Collected remain
+   read-only while the saved order is Draft.
+7. The operator reviews and submits the order, moving it from Draft to In
+   Progress. The application assigns its invoice number and generates an invoice
+   using the confirmed information. Confirmation is an action, not another status.
+8. The invoice is downloaded/printed or emailed. Work is tracked using the single
+   status on the whole order.
 9. The supervisor assigns or reassigns the worker as needed and monitors deadlines.
-10. The operator records full payment and collection/delivery independently, in
-    whichever sequence occurs in practice.
-11. Once fully paid, an authorized user manually closes the order. Closure does
-    not silently mark unfinished work complete or mark items delivered.
+10. When the work is finished, an authorized user manually marks the order Complete.
+    A user must be assigned before this change can be saved.
+11. The operator marks Collected and records full payment independently, in
+    whichever sequence occurs in practice. Completing an order does not mark it
+    collected or paid, and payment/collection does not change its work status.
+    Payment status is editable in In Progress and Complete; Collected can be changed only
+    after the order has been saved as Complete.
+
+An In Progress order that will not proceed can be marked Cancelled. A saved Draft
+that will not proceed is deleted instead; an unsaved draft can be discarded.
+There is no separate Closed status or payment-dependent closure step.
 
 ## 5. Functional requirements
 
@@ -106,8 +122,26 @@ services during order entry still need to be implemented explicitly.
 - Use one customer field that filters a dropdown as the operator types. Provide
   a Create New button above it to open customer details in a modal, with clear
   apply/cancel actions that preserve the draft.
-- Keep labels brief. Put order details at the bottom and label the assignment
-  field Assignee (or Assigned To).
+- Keep labels brief. Put Order Details at the top and label the assignment field
+  Assigned To. Above it, show the current status in a labelled badge near the
+  order heading and show the total with its currency. Keep header and bottom
+  totals in sync as draft charges change. Show only the actions available in the
+  saved stage, using ordinary accessible buttons.
+- Show an app-styled confirmation modal before status-changing actions, deleting
+  a draft, or discarding an unsaved order. Use wording specific to the chosen
+  action in both top and bottom controls. Focus Cancel initially; Cancel or Escape
+  must leave entered changes on screen. Confirming must revalidate and submit the
+  originally chosen action. Save actions do not require confirmation.
+- Keep customer, item, service, and order-note fields editable in Draft. Submit
+  saves the draft and moves it to In Progress. Afterwards, lock customer selection,
+  products, services, quantities, and adding/removing rows on both the server and
+  screen until an allowed action returns the order to Draft. Deadlines, optional
+  times, and internal notes remain editable while In Progress.
+- Disable Assigned To, Assign to Me, Payment status, and Collected in Draft and
+  Cancelled, on both the screen and server. Assigned To and Payment status are
+  editable only in In Progress and Complete; Collected only in Complete. Preserve
+  stored values when a field becomes read-only. Cancelled allows only Order Notes
+  to be updated, with a Save notes action for adding a cancellation reason.
 - Give each order a unique reference, customer, creation date, creator, order-wide notes,
   confirmation date, and optional assigned user.
 - Provide a global notes section for general order instructions, alongside optional
@@ -115,6 +149,11 @@ services during order entry still need to be implemented explicitly.
 - Keep order-wide notes and service notes as internal work instructions, separate
   from customer-visible invoice notes. Internal notes must not appear in the invoice
   PDF or customer invoice email.
+- Allow deadline dates, optional times, and internal notes at order, item, and
+  service/extra level to change while In Progress. Keep customer selection,
+  products, services, quantities, prices, and adding/removing rows locked until
+  the order is returned to Draft. Operational changes must preserve charges and
+  issued invoice data, and must be protected against stale saves.
 - Allow draft orders to be saved and resumed. Confirmation requires a customer,
   at least one item, required item details and deadlines, and valid service prices.
 - Use the customer's email for invoice delivery when available. A missing email
@@ -134,13 +173,14 @@ Each order item must support:
 - Work instructions and a deadline date with an optional time.
 - One or more selected service occurrences, including repeats of the same service,
   each with its own charge and optional internal text note.
-- Work progress and completion date/time.
-- Collection/delivery tracking. The proposed minimum supports item-level tracking
-  and derives the overall delivery state, so partial collection can be represented.
+
+Work status and the Collected checkbox belong to the whole order. Items do not
+have their own progress, completion state, or collection tracking.
 
 Items with different deadlines or work instructions must be separate order lines.
-The order's next outstanding deadline is derived from unfinished items; it must
-not replace or overwrite the deadlines on individual items.
+The order's next deadline is the earliest of its item deadlines while the order
+is Draft or In Progress; it must not replace individual deadlines. Complete and
+Cancelled orders are excluded from overdue-work indicators.
 
 A deadline without a time remains date-only when saved and displayed; the user
 must not be forced to supply a time. Deadline sorting and overdue indicators must
@@ -177,7 +217,9 @@ invented midnight deadline.
 
 ### 5.4 Assignment and staff workload
 
-- Allow a single assigned user per order, including an unassigned state.
+- Allow a single assigned user per order, including an unassigned state while
+  Draft or In Progress. Assigned To is editable only in In Progress and Complete.
+  Complete requires an assigned user.
 - Support assignment and reassignment after confirmation, with actor and timestamp
   history. Assignment changes must not create another invoice.
 - Make the assigned user, outstanding work, instructions, and deadlines visible to
@@ -187,29 +229,59 @@ invented midnight deadline.
 - Use the existing user accounts. Multiple workers per order, per-item assignment,
   and calculation of worker pay are outside the first version.
 
-### 5.5 Statuses and manual closure
+### 5.5 Order status, collection, and payment status
 
 Keep these dimensions independent:
 
-| Dimension | Proposed values or behavior |
+| Field | Confirmed values or behavior |
 | --- | --- |
-| Order lifecycle | Draft, Confirmed/Open, Closed, Cancelled |
-| Item work progress | Not started, In progress, Completed |
-| Overall work progress | Derived from the items, including partially completed work |
-| Delivery | Not delivered, Partially delivered, Delivered/Collected |
-| Payment | Unpaid, Paid in full |
+| Status | Draft, In Progress, Complete, Cancelled |
+| Collected | Checkbox: unchecked or checked, for the whole order |
+| Payment status | Unpaid, Paid, or Refunded; full payment only |
 | Assignment | Unassigned or an assigned user |
 
-Completed work does not imply payment or collection. Payment does not imply
-completion, collection, or closure. Delivery does not imply payment.
+Draft means the order is being prepared; In Progress means the job is active;
+Complete means the work on the whole order is finished; Cancelled means the order
+will not proceed. An authorized user changes the order status manually.
 
-Manual closure requires a confirmed, fully paid order. Closing an order with
-unfinished or undelivered items should display a clear warning; those facts must
-remain visible on the dashboard and in reports even after closure. Whether to
-block such closure entirely remains an open decision. Reopening should be a
-supervisor action with a recorded reason.
+Keep the current status badge read-only. A normal Save action preserves the stage.
+Expose the following status-changing actions:
 
-Cancellation must preserve the order reference and history. The treatment of an
+| Current stage | Action | Destination |
+| --- | --- | --- |
+| Draft | Submit | In Progress |
+| Draft | Delete draft (saved orders only) | Draft and its items/service charges are removed |
+| In Progress | Cancel order | Cancelled |
+| In Progress | Mark complete | Complete |
+| In Progress | Return to draft | Draft |
+| Complete | Reopen | In Progress |
+| Cancelled | Restore to draft | Draft |
+
+Mark complete without Assigned To must be rejected with a clear message. Reject
+actions that are unavailable in the current stage, including forged direct POST
+requests and arbitrary status values. Repeated clicks or stale forms must not
+repeat an action or overwrite a newer save.
+
+Complete may be unpaid or uncollected. Collected may be checked independently of
+Payment status while the saved order is Complete. Outside Complete, the checkbox
+is read-only and its stored value is preserved. Recording payment does not automatically mark the order Complete
+or Collected. These fields must remain individually visible and filterable.
+
+Refunded is a manual payment-status option, available in the same editable stages
+as Paid/Unpaid and included in order-list filters. It does not change work status,
+collection, charges, or invoice amounts and does not itself process a refund.
+
+Do not add a separate Closed state, derived item-progress summary, or partial
+collection states. This replaces the earlier manual closure proposal and its
+requirement for payment before closure. Changes back from Complete or Cancelled
+are status changes subject to the agreed permissions and financial correction
+rules, not an additional reopening workflow.
+
+Cancellation of an In Progress order must preserve its reference and history.
+Draft deletion is a separate explicit action, requires deletion permission and
+an unchanged draft revision, and must not delete shared customers or catalog
+entries. A stale deletion request must not remove a submitted or modified order.
+The treatment of an
 already-issued invoice or payment on cancellation must be agreed before that
 operation is implemented; cancellation must not silently erase financial records.
 
@@ -220,12 +292,12 @@ operation is implemented; cancellation must not silently erase financial records
 - Derive paid/unpaid from the recorded financial information. Reject accidental
   duplicate settlement and unsupported partial-payment amounts.
 - Recording payment updates the order and invoice payment display without
-  changing their original charges or closing the order automatically.
+  changing their original charges, order status, or Collected checkbox.
 - Payment recording is manual in the first version. Online card payments, bank
   feeds, automatic bank reconciliation, deposits, and partial payments are excluded.
 - Corrections to an incorrectly recorded payment require an authorized action,
-  reason, and history rather than silent deletion. Refund handling is an open
-  decision and must not be implied by a payment correction.
+  reason, and history rather than silent deletion. Refund transaction handling
+  remains an open decision, separate from the manual Refunded status indicator.
 
 ## 6. Invoices, PDF layout, and email
 
@@ -234,6 +306,8 @@ operation is implemented; cancellation must not silently erase financial records
 - Generate one uniquely numbered invoice when an order is confirmed. Confirmation
   must be atomic and safe to retry: repeated clicks must not create duplicate
   invoices or consume the same number for different invoices.
+- Confirmation is the first Draft-to-In Progress transition; it does not introduce
+  a Confirmed status. Subsequent status changes do not issue another invoice.
 - Preserve a snapshot of the customer billing details, business invoice settings,
   service descriptions, quantities, prices, currency, and totals at issue time.
 - Reprinting or emailing an invoice reuses that issued invoice, rather than
@@ -294,17 +368,18 @@ template designer and multiple layout themes are outside the initial scope.
 
 Provide summary counts/totals and lists that link to filtered order views:
 
-- Open orders and unassigned orders.
+- Active orders (Draft and In Progress) and unassigned orders.
 - Items due today, due soon, and overdue, with their worker and order reference.
-- Orders in progress and completed work awaiting collection/delivery.
-- Partially delivered and delivered/collected orders.
+- Orders with status In Progress and Complete orders awaiting collection.
+- Collected and uncollected orders, using the single order checkbox.
 - Unpaid invoices/orders, their outstanding value, and overdue payments when
   payment due dates are configured.
 - Payments received in a selected period and workload by assigned user.
 
-Dashboard categories can overlap. An order can be open, completed, and unpaid at
-the same time. Closed orders with unfinished or uncollected items must not vanish
-from the relevant operational lists.
+Dashboard categories can overlap. For example, an order can be Complete, Unpaid,
+and not Collected at the same time. Complete orders must remain visible in the
+unpaid and awaiting-collection lists where applicable. Status counts use the four
+whole-order values rather than item progress.
 
 ### 7.2 Searchable order report
 
@@ -312,13 +387,13 @@ Start with a sortable, paginated table and filters rather than a custom report
 builder. Use one row per order, with a link to item/service detail.
 
 Suggested columns: order reference, invoice number, customer, created date,
-confirmed date, earliest outstanding deadline, assigned user, order lifecycle,
-work progress, delivery status/date, invoice amount/currency, paid amount,
-outstanding amount, payment date/method/reference, and closure date.
+confirmed date, earliest deadline, Assigned To, Status, Collected, Payment status,
+invoice amount/currency, paid amount, outstanding amount, payment
+date/method/reference, and order completion date.
 
 Suggested filters: text search, date range and date basis, assigned user including
-unassigned, lifecycle, work progress, delivery status, payment status, overdue
-items, and product/service. Provide totals for the filtered result and CSV export.
+unassigned, order status, Collected, Payment status, overdue active orders, and
+product/service. Provide totals for the filtered result and CSV export.
 
 Use related order, item, service, invoice, and payment records as the source of
 truth. The report table is a view of those records, rather than a second manually
@@ -335,15 +410,15 @@ currencies into one unlabeled monetary total.
 ## 8. Access, history, and reliability
 
 - Extend the current role system with specific order, assignment, invoice, payment,
-  reporting, and closure permissions. Supervisor is a business capability whose
+  reporting, status-change, and collection permissions. Supervisor is a business capability whose
   mapping to the existing roles still needs agreement.
-- Recommended split: operators capture orders; workers update permitted work
-  progress; supervisors assign users, close/reopen orders, and view financial
+- Recommended split: operators capture orders; workers update permitted whole-order
+  statuses; supervisors assign users, manage status changes, and view financial
   reports; administrators manage catalogs and business settings.
 - Enforce permissions on the server as well as in navigation. Decide whether
   workers see only assigned orders and whether they can see prices/customer data.
 - Record important transitions: confirmation, assignment changes, deadline changes,
-  work completion, delivery, payment/corrections, closure/reopening, and cancellation.
+  order status changes, Collected changes, and payment/corrections.
 - Validate totals and state changes on the server. Use transactions and concurrency
   controls where needed to prevent duplicate confirmation, invoices, or payment.
 - Preserve historical financial references when a customer, product, service, or
@@ -361,8 +436,8 @@ These are planning concepts, not a final database schema:
 | --- | --- |
 | Customer | Existing customer/contact record |
 | Product / Service | Existing reusable catalogs, extended for explicit global service applicability |
-| ServiceOrder | Customer, reference, lifecycle, assigned user, key dates, and order-wide internal notes |
-| OrderItem | Customer product/type, optional item notes, deadline date with optional time, work and delivery state; no item label or product quantity |
+| ServiceOrder | Customer, reference, four-value Status, Collected checkbox, Payment status, assigned user, key dates, and order-wide internal notes |
+| OrderItem | Customer product/type, optional item notes, deadline date with optional time; no item status, progress, collection, label, or product quantity |
 | OrderServiceCharge | One selected service occurrence, item-or-order scope, charge quantity, captured price, and optional internal text note; repeated occurrences are allowed |
 | Invoice / InvoiceLine | Issued identity and financial/business/customer snapshots |
 | Payment | Full settlement amount, date, method, reference, and correction history |
@@ -376,12 +451,12 @@ These are planning concepts, not a final database schema:
    lookup/creation, deadline dates with optional times, service applicability,
    repeated service occurrences and notes, order-wide notes, extra charges, and
    price totals.
-2. **Work management:** assignment/reassignment, work and delivery statuses,
-   operational lists, permissions, and change history.
+2. **Work management:** the four whole-order statuses, Collected checkbox, separate
+   Payment status field, assignment/reassignment, permissions, and change history.
 3. **Invoices:** confirmation, numbering and snapshots, business invoice settings,
    approved PDF sample, download/print, email configuration, and delivery history.
-4. **Settlement and closure:** full-payment recording and corrections, manual
-   closure/reopening, cancellation rules, and financial history.
+4. **Settlement:** full-payment recording and corrections behind Payment status,
+   cancellation rules, and financial history. No separate closure workflow.
 5. **Visibility and release:** dashboard, filtered reports/CSV, workflow tests,
    backup/restore checks, and end-to-end business acceptance.
 
@@ -401,12 +476,14 @@ These phases are a suggested implementation order, not a time or cost estimate.
    prices, customer details, or banking settings does not rewrite an issued invoice.
 6. A long invoice with multiple items/services prints legibly across pages and can
    be emailed. A failed email can be retried without another invoice being issued.
-7. One item can be completed before another. A completed order remains visible
-   as awaiting collection and/or unpaid where appropriate.
+7. An authorized user marks the whole order Complete without updating individual
+   item progress. It remains visible as uncollected and/or unpaid where appropriate.
 8. Full payment records the expected amount and reference. Partial or duplicate
-   settlement is rejected. Payment does not close the order automatically.
-9. An authorized user closes a fully paid order manually. Delivery and work facts
-   remain accurate; any permitted reopening records the actor and reason.
+   settlement is rejected. Payment status becomes Paid without changing Status
+   or Collected automatically.
+9. The order has exactly four work statuses: Draft, In Progress, Complete, Cancelled.
+   Changing Status or the Collected checkbox preserves the other fields; authorized
+   changes are recorded. No item status or separate Closed state is needed.
 10. A supervisor filters orders by worker, deadline, status, and date range. Cash
     totals reflect actual payments in the selected period and do not double-count
     orders that have several services.
@@ -425,8 +502,31 @@ These phases are a suggested implementation order, not a time or cost estimate.
 16. Typing in the customer field shows selectable matches. Creating a customer in
     the modal or cancelling it preserves the order's other fields and selections.
 17. An operator enters quantities only on service rows, sees each charge calculated
-    as quantity × unit price, and finds Assignee and order notes below the items
-    and extras.
+    as quantity × unit price, and finds Assigned To and order notes in Order Details
+    at the top, below the current status badge and order total.
+18. Submit saves a valid draft and moves it to In Progress. Assigned To, Payment
+    status, and Collected stay read-only for that request; assignment/payment can
+    be edited afterwards. Invalid drafts stay unchanged. Customer/product/service/
+    quantity changes and row additions/removals are rejected or ignored after
+    submission until the order is saved back as Draft through an allowed action.
+    In Progress permits deadline dates, optional times, and internal order/item/
+    service notes to change, preserving charges and invoice data. Invalid deadlines
+    prevent the whole save; stale requests cannot overwrite newer edits.
+    Complete locks deadlines and notes until reopened. Cancelled allows only
+    order-level notes, including a cancellation reason; other fields remain
+    locked, including during restoration. Assignment/payment are editable only
+    in In Progress and Complete; collection only in Complete.
+19. Complete cannot be saved without Assigned To, including direct POST requests.
+    Selecting a user and clicking Mark complete in the same request succeeds.
+20. The current status badge is not interactive. Each stage shows only its allowed action
+    buttons; actions from another stage and direct status editing are rejected.
+    Reopen returns Complete to In Progress, Restore to draft returns Cancelled
+    to Draft, and a normal Save preserves the stage.
+21. Saved drafts show Delete draft, unsaved drafts show Discard, and only In
+    Progress shows Cancel order. Draft deletion removes that draft and its items/
+    charges only, requires permission and CSRF, and rejects stale revisions or
+    drafts that have since been submitted. No real customer/catalog records are
+    deleted with the draft.
 
 ## 12. Outside the initial scope
 
@@ -437,6 +537,8 @@ These phases are a suggested implementation order, not a time or cost estimate.
 - Customer self-service portals, online booking, SMS/WhatsApp notifications, and
   automatic deadline reminders.
 - Multiple assignees or different workers per item on the same order.
+- Item-level progress/status, partial collection/delivery tracking, and a separate
+  Closed status or closure workflow.
 - Arbitrary invoice layout builders, advanced report builders, and currency conversion.
 
 Refunds, credit notes, discounts, and correction of issued financial documents
@@ -448,14 +550,16 @@ Decisions D01 (product-defined units), D02 (deadline date with optional time),
 and D03 (service-only quantities) are resolved in section 2. The remaining IDs
 are kept stable for future reference.
 
+D04 (payment-dependent closure) is superseded by the four-status workflow in
+section 5.5. D09 is resolved as one whole-order Collected checkbox, with no partial
+collection tracking.
+
 | ID | Decision to confirm | Suggested starting point |
 | --- | --- | --- |
-| D04 | Can an order be closed while work or delivery is incomplete? | Always require full payment; warn before manual closure with outstanding work/collection. Confirm whether a hard block is preferred. |
-| D05 | Who can create/confirm orders, assign workers, record payment, close/reopen, and see finances? | Agree the operator/worker/supervisor permissions before adding roles or changing existing ones. |
+| D05 | Who can create/confirm orders, change Status or Collected, assign workers, record payment, and see finances? | Agree the operator/worker/supervisor permissions before adding roles or changing existing ones. |
 | D06 | Which business and tax details, payment terms, invoice numbering, and disclaimers are needed? | Review actual business details and a sample invoice; do not invent tax status or final disclaimer wording. |
 | D07 | How are confirmed orders corrected, cancelled, or refunded? | Preserve issued records and record reasons; agree void/reissue/credit behavior before financial edits are allowed. |
 | D08 | Which email sender/provider should deliver invoices, and is sending always manual? | Explicit send with a preview initially; store provider credentials securely outside the repository. |
-| D09 | Can different items be collected separately? Is a collected-by name/reference needed? | Track delivery per item and derive order-level status; confirm the information staff need at collection. |
 | D10 | What dates and worker attribution should financial reports use? | Separate invoice-date sales and payment-date receipts; current worker for workload, with historical attribution agreed separately. |
 | D11 | What target date/time does an overnight request mean for the business? | Let the operator enter the agreed deadline and optional time; do not silently calculate one from the service name. |
 
@@ -471,3 +575,12 @@ requirements so planned features are not mistaken for delivered functionality.
 | 14 November 2026 | Confirmed product-defined units, deadline dates with optional times, repeated service selections on one product, optional internal notes per service occurrence, and a global order notes section. Updated requirements and acceptance scenarios; resolved D01/D02 and retained overnight interpretation as D11. |
 | 14 November 2026 | Implemented the draft service-order milestone. Delivery details, provisional pricing/permission choices, verification, and remaining work are recorded separately in development-status.md. |
 | 14 November 2026 | Simplified the order form: searchable customer dropdown and creation modal, order details at the bottom, Assignee label, no item label/description or product quantity, service-only quantities, and shorter wording. Resolved D03. |
+| 15 November 2026 | Simplified the planned workflow to whole-order Status (Draft, In Progress, Complete, Cancelled), an independent Collected checkbox, and Payment status (Unpaid/Paid). Removed item progress, partial collection, and the separate closure workflow; supersedes D04 and resolves D09. |
+| 15 November 2026 | Implemented the three order-level fields and list filters. All statuses remain editable; payment status is a manual indicator for now. Invoice generation, payment records, and detailed change history remain later work; see development-status.md. |
+| 15 November 2026 | Moved Order Details to the top, renamed the assignment field Assigned To, and added a clickable status banner and Submit order action. Confirmed Draft-only editing for customer/items/services/order notes, reopening by saving as Draft, editable assignment/payment/collection after submission, and required assignment before Complete. |
+| 15 November 2026 | Replaced the clickable banner with a read-only stage display and explicit Submit, Mark complete, Cancel order, Return to draft, Reopen, and Restore to draft actions. Enforced permitted transitions on the server; normal saves preserve the stage. |
+| 15 November 2026 | Made Assigned To, Payment status, and Collected read-only in Draft, with Collected editable only in Complete. Draft disposal now deletes saved drafts or discards unsaved drafts; Cancel order applies only in In Progress. Added server validation and permission/revision/CSRF protection for draft deletion. |
+| 15 November 2026 | Allowed In Progress deadline dates, optional times, and internal order/item/service/extra notes to be updated while retaining locks on customer selection, products, services, quantities, prices, and row additions/removals. Changes preserve captured charges and invoice data; Complete/Cancelled continue to lock these details until reopened/restored. |
+| 15 November 2026 | Replaced the four-stage banner with a labelled current-status badge near the order heading and a labelled total with currency. Header and bottom totals update together while editing; existing orders open through View and use a neutral Order heading. |
+| 15 November 2026 | Made Cancelled orders read-only except for Order Notes, so cancellation reasons can be added. Added Save notes and locked Assigned To, Assign to Me, and Payment status; retained Restore to draft with source-stage locks and stale-save protection. |
+| 15 November 2026 | Added Refunded as a manual payment status, including the form, list badge, and filter. Retained stage field locks and captured order charges; migration 0010 extends the database constraint without changing existing values. Refund transactions remain later work. |

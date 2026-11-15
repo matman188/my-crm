@@ -6,15 +6,27 @@
 {% block page_copy %}Add a customer, items, and services.{% endblock %}
 
 {% block content %}
-<div class="toolbar">
+<div class="toolbar order-form-toolbar">
     <div>
         <h2>{{ page_title }}</h2>
-        <p class="meta">Draft · {{ order.currency }}</p>
+        <dl class="order-summary" aria-label="Order summary">
+            <div>
+                <dt>Status</dt>
+                <dd><span class="role-badge order-status-badge order-state order-state-{{ order.status }}">{{ order.get_status_display }}</span></dd>
+            </div>
+            <div>
+                <dt>Total</dt>
+                <dd class="order-header-total" data-order-total>{{ order.currency }} {% if order.pk %}{{ order.total|floatformat:2 }}{% else %}0.00{% endif %}</dd>
+            </div>
+        </dl>
     </div>
-    <a class="button-link" href="{% url 'orders' %}">Back to orders</a>
+    <div class="order-header-controls">
+        {% include 'crm/_order_actions.html' with action_group_label='Top order actions' %}
+        <a class="order-back-link" href="{% url 'orders' %}">Back to orders</a>
+    </div>
 </div>
 <noscript><p class="non-field-errors">Enable JavaScript to use this form.</p></noscript>
-<form method="post" class="form-grid order-editor" data-order-editor data-currency="{{ order.currency }}">
+<form method="post" id="order-editor" class="form-grid order-editor" data-order-editor data-currency="{{ order.currency }}" data-order-locked="{{ editor.locked|yesno:'true,false' }}">
     {% csrf_token %}
     {{ editor.form.revision }}
     {{ editor.form.revision.errors }}
@@ -22,13 +34,40 @@
     {{ editor.form.customer }}
     <p class="non-field-errors" data-editor-feedback role="alert" hidden></p>
     {% if editor.form.non_field_errors %}<div class="non-field-errors" role="alert">{{ editor.form.non_field_errors }}</div>{% endif %}
-    {% if editor.form.errors or editor.items.errors or editor.general.errors %}
+    {% if editor.form.errors or editor.items.errors or editor.general.errors or editor.detail_errors %}
         <p class="non-field-errors" role="alert">Check the fields below, then save again.</p>
     {% endif %}
-    <section class="panel customer-section">
+    <p class="meta order-status-help">{% if order.status == 'draft' %}Save your changes or submit the order to start work.{% elif order.status == 'in_progress' %}Deadlines and internal notes can be updated. Products and services are locked. Assign a user before marking the order Complete.{% elif order.status == 'complete' %}Work is complete. Collection and payment can still be updated.{% else %}This order is cancelled. Only Order Notes can be updated. Restore to Draft to edit the order again.{% endif %}</p>
+    <section class="panel">
+        <h3>Order Details</h3>
+        <div class="form-layout">
+            <div class="form-field">
+                <label for="{{ editor.form.assigned_to.id_for_label }}">Assigned To</label>
+                <div class="order-assignment-control">
+                    {{ editor.form.assigned_to }}
+                    <button class="button secondary" type="button" data-assign-to-me="{{ request.user.pk }}" aria-controls="{{ editor.form.assigned_to.id_for_label }}"{% if editor.form.assigned_to.field.disabled %} disabled{% endif %}>Assign to Me</button>
+                </div>
+                {{ editor.form.assigned_to.errors }}
+            </div>
+            <div class="form-field">
+                <label for="{{ editor.form.payment_status.id_for_label }}">Payment status</label>
+                {{ editor.form.payment_status }}{{ editor.form.payment_status.errors }}
+            </div>
+            <div class="form-field order-collected-field">
+                <label for="{{ editor.form.collected.id_for_label }}">{{ editor.form.collected }} Collected</label>
+                {{ editor.form.collected.errors }}
+            </div>
+            <div class="form-field full">
+                <label for="{{ editor.form.notes.id_for_label }}">{{ editor.form.notes.label }}</label>
+                {{ editor.form.notes }}{{ editor.form.notes.errors }}
+                {% if editor.form.notes.help_text %}<span class="helptext">{{ editor.form.notes.help_text }}</span>{% endif %}
+            </div>
+        </div>
+    </section>
+    <fieldset class="panel customer-section order-fieldset"{% if editor.locked %} disabled{% endif %}>
         <div class="order-row-footer">
             <h3>Customer</h3>
-            {% if perms.crm.add_customer %}<button class="button secondary" type="button" data-create-customer>Create New</button>{% endif %}
+            {% if perms.crm.add_customer and not editor.locked %}<button class="button secondary" type="button" data-create-customer>Create New</button>{% endif %}
         </div>
         <div class="customer-picker" data-customer-picker>
             <label class="visually-hidden" for="customer-search">Customer</label>
@@ -40,37 +79,24 @@
         <span class="role-badge" data-new-customer-badge hidden>New customer</span>
         <span id="customer-search-status" class="visually-hidden" role="status" data-customer-search-status></span>
         {{ editor.form.customer.errors }}{{ editor.form.customer_mode.errors }}
-    </section>
-    <div>
+    </fieldset>
+    <fieldset class="order-fieldset"{% if editor.locked and not editor.details_editable %} disabled{% endif %}>
         <h3>Items</h3>
         {{ editor.items.management_form }}
         {% if editor.items.non_form_errors %}<div class="non-field-errors">{{ editor.items.non_form_errors }}</div>{% endif %}
         <div class="order-items" data-item-rows>
             {% for item_form in editor.items %}{% include 'crm/_order_item.html' %}{% endfor %}
         </div>
-        <button class="button secondary" type="button" data-add-item>Add item</button>
-    </div>
-    <section class="panel">
+        <button class="button secondary" type="button" data-add-item{% if editor.locked %} disabled{% endif %}>Add item</button>
+    </fieldset>
+    <fieldset class="panel order-fieldset"{% if editor.locked and not editor.details_editable %} disabled{% endif %}>
         <h3>Extras</h3>
         <p class="meta">Services for the whole order.</p>
         {% include 'crm/_order_services.html' with service_formset=editor.general general=True %}
-    </section>
-    <section class="panel">
-        <h3>Order details</h3>
-        <div class="form-layout">
-            <div class="form-field">
-                <label for="{{ editor.form.assigned_to.id_for_label }}">Assignee</label>
-                {{ editor.form.assigned_to }}{{ editor.form.assigned_to.errors }}
-            </div>
-            <div class="form-field full">
-                <label for="{{ editor.form.notes.id_for_label }}">{{ editor.form.notes.label }}</label>
-                {{ editor.form.notes }}{{ editor.form.notes.errors }}
-            </div>
-        </div>
-    </section>
+    </fieldset>
     <div class="order-save-bar">
-        <div><span class="meta">Total</span><strong class="order-grand-total" data-order-total aria-live="polite">{{ order.currency }} —</strong></div>
-        <button class="button" type="submit">Save draft</button>
+        <div><span class="meta">Total</span><strong class="order-grand-total" data-order-total aria-live="polite">{{ order.currency }} {% if order.pk %}{{ order.total|floatformat:2 }}{% else %}0.00{% endif %}</strong></div>
+        {% include 'crm/_order_actions.html' with action_group_label='Bottom order actions' %}
     </div>
     <template data-item-template>{% include 'crm/_order_item.html' with item_form=editor.empty_item %}</template>
     <dialog class="customer-dialog" aria-labelledby="customer-dialog-title" data-customer-dialog data-has-errors="{{ editor.customer_form.errors|yesno:'true,false' }}">
@@ -82,11 +108,26 @@
         </div>
     </dialog>
 </form>
+{% if order.pk and editor.original_status == 'draft' and perms.crm.delete_serviceorder %}
+<form id="delete-draft-form" method="post" action="{% url 'delete_order' order.pk %}" hidden>
+    {% csrf_token %}
+    <input type="hidden" name="revision" value="{{ editor.form.revision.value }}">
+</form>
+{% endif %}
+<dialog class="order-confirm-dialog" aria-labelledby="order-confirm-title" aria-describedby="order-confirm-message" data-order-confirmation>
+    <h2 id="order-confirm-title" data-confirm-title></h2>
+    <p id="order-confirm-message" data-confirm-message></p>
+    <div class="button-row order-confirm-actions">
+        <button class="button secondary" type="button" data-confirm-cancel autofocus>Cancel</button>
+        <button class="button" type="button" data-confirm-accept>Confirm</button>
+    </div>
+</dialog>
 {{ service_catalog|json_script:'order-service-catalog' }}
 {{ customer_catalog|json_script:'order-customer-catalog' }}
 {% endblock %}
 
 {% block extra_scripts %}
 <script src="{% static 'crm/js/order-customer.js' %}" defer></script>
+<script src="{% static 'crm/js/order-confirmation.js' %}" defer></script>
 <script src="{% static 'crm/js/order-form.js' %}" defer></script>
 {% endblock %}

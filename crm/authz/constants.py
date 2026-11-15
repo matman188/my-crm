@@ -85,7 +85,7 @@ GROUP_PERMISSION_MAP = {
     },
 }
 
-# All CRM roles can capture and maintain drafts. Later workflow actions will have
-# their own permissions rather than granting configuration access to operators.
+# All CRM roles can capture and maintain orders without configuration access.
+# Finer worker/supervisor restrictions can be added through separate permissions.
 for role_permissions in GROUP_PERMISSION_MAP.values():
-    role_permissions["crm"].update({"view_serviceorder", "add_serviceorder", "change_serviceorder"})
+    role_permissions["crm"].update({"view_serviceorder", "add_serviceorder", "change_serviceorder", "delete_serviceorder"})

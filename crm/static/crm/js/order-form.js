@@ -5,6 +5,7 @@
     const catalog = JSON.parse(document.getElementById("order-service-catalog").textContent);
     const services = new Map(catalog.map(service => [String(service.id), service]));
     const currency = editor.dataset.currency;
+    const locked = editor.dataset.orderLocked === "true";
     const money = cents => `${currency} ${cents / 100n}.${String(cents % 100n).padStart(2, "0")}`;
     const cents = price => {
         const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(String(price));
@@ -33,9 +34,9 @@
             const item = row.closest("[data-order-item]");
             const productId = item ? Number(field(item, "product").value) : null;
             select.replaceChildren(new Option("Choose a service", ""));
-            catalog.filter(service => general ? service.products.length === 0 : productId && (
+            catalog.filter(service => (locked && String(service.id) === row.dataset.originalService) || (general ? service.products.length === 0 : productId && (
                 service.products.length === 0 || service.products.includes(productId)
-            )).forEach(service => {
+            ))).forEach(service => {
                 const label = `${service.name} — ${currency} ${service.price}`;
                 const option = new Option(label, String(service.id));
                 option.disabled = String(service.price).startsWith("-");
@@ -66,7 +67,9 @@
         editor.querySelectorAll("[data-order-item]").forEach(item => {
             item.querySelector("[data-item-total]").textContent = money(BigInt(item.dataset.subtotal));
         });
-        editor.querySelector("[data-order-total]").textContent = money(total);
+        document.querySelectorAll("[data-order-total]").forEach(display => {
+            display.textContent = money(total);
+        });
     }
 
     function appendRow(container, template, placeholder, rows, rowSelector) {
@@ -91,7 +94,15 @@
     editor.addEventListener("click", event => {
         const button = event.target.closest("button");
         if (!button) return;
-        if (button.matches("[data-add-item]")) {
+        if (button.matches("[data-assign-to-me]")) {
+            const assignedTo = editor.querySelector('[name="assigned_to"]');
+            const currentUserId = button.dataset.assignToMe;
+            if (assignedTo && !assignedTo.disabled && [...assignedTo.options].some(option => option.value === currentUserId && !option.disabled)) {
+                assignedTo.value = currentUserId;
+                assignedTo.dispatchEvent(new Event("change", { bubbles: true }));
+                assignedTo.focus();
+            }
+        } else if (button.matches("[data-add-item]")) {
             appendRow(editor, editor.querySelector("[data-item-template]"), "__prefix__", editor.querySelector("[data-item-rows]"), "[data-order-item]");
         } else if (button.matches("[data-add-charge]")) {
             const container = button.closest("[data-services]");

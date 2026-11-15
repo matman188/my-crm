@@ -5,7 +5,7 @@ Updated: 15 November 2026
 The [scope of work](scope-of-work.md) describes the intended complete workflow.
 This file records what is implemented.
 
-## Draft service orders: implemented
+## Service orders: implemented
 
 Open **Orders** in the sidebar, then **Create order**.
 
@@ -18,10 +18,51 @@ Open **Orders** in the sidebar, then **Create order**.
 - Add services to each item. The same service can be added several times, with
   separate optional internal notes and quantities for every occurrence.
 - Add order-wide extras from global services and general internal order notes.
-- Set the optional **Assignee** and order notes in **Order details** at the bottom.
+- The order heading shows the current status in a labelled, colour-coded badge
+  beside a labelled total with its currency. The four-stage banner is removed.
+  Use the stage-specific action buttons to move the order forward, cancel,
+  reopen, or restore it. Existing orders use an Order heading and View list link.
+- The same action buttons appear beside the order heading and below the total,
+  in the same order and share one template. Draft deletion uses its own form so
+  unfinished edits do not block deletion.
+- Submit, Mark complete, Cancel order, Return to draft, Reopen, Restore to draft,
+  Delete draft, and Discard show action-specific confirmation modals that match
+  the app. The heading and confirmation button name the selected action. Cancel
+  has initial focus; Cancel or Escape dismisses the modal and
+  leaves entered changes on screen. Confirming revalidates and submits the
+  original action, or follows Discard. Save buttons do not prompt.
+- **Order Details** is at the top, with **Assigned To**, **Collected**, **Payment
+  status**, and order notes. New orders default to Draft, not collected, and Unpaid.
+- **Assign to Me** beside Assigned To selects the signed-in user. Save or use a
+  stage action to persist the selection with the other changes. It is disabled
+  in Draft and Cancelled, along with Assigned To and Payment status.
+- Drafts allow editing the customer, items, services, and order notes. **Submit**
+  saves the draft and moves it to In Progress. Assigned To and Payment status
+  become editable after submission; changes posted while Draft are ignored.
+- In Progress orders allow deadline dates, optional times, and internal notes at
+  order, item, and service/extra level to be updated. Customer selection, products,
+  services, quantities, prices, and adding/removing rows remain locked. These
+  operational edits preserve captured charges, currency, and totals.
+- Use Return to draft (or Restore to draft for a cancelled order) to edit customer
+  selection, products, and services again. Complete and Cancelled also lock
+  deadlines and item/service notes; a Complete order must be reopened to In
+  Progress to edit those. Cancelled permits only Order Notes, for example a
+  cancellation reason, with a Save notes button. Assigned To, Assign to Me, and
+  Payment status are editable only in In Progress and Complete. Collected is
+  editable only in Complete.
+- Payment status supports Unpaid, Paid, and Refunded. Refunded is a manual status
+  indicator, with a distinct badge and list filter; it preserves order charges,
+  totals, work status, and collection state.
+- Saved drafts show **Delete draft**, with a confirmation prompt. Unsaved drafts
+  show **Discard**. In Progress orders still use **Cancel order**, preserving
+  their record as Cancelled.
+- An assigned user is required before marking an order Complete.
 - Preview individual charges, item subtotals, and the order total while editing.
-- Save and reopen drafts using their `SO-000001` style references. Search orders
-  by reference, customer, assigned user, or order notes.
+  The total is shown in both the header and bottom action area, and both update
+  as draft charges change.
+- Save and edit orders in every status using their `SO-000001` style references.
+  Search by reference, customer, assigned user, or order notes, and filter by Status,
+  Collected, and Payment status. Filters are retained when paging through results.
 
 ### Pricing and service applicability
 
@@ -38,7 +79,7 @@ The first implementation uses these explicit rules:
 - Prices come from the server's catalog, not submitted browser totals. A service's
   price is captured when its charge is saved and retained on later edits. Changing
   the selected service captures the replacement service's current price.
-- Each draft retains its creation currency if the business default changes.
+- Each order retains its creation currency if the business default changes.
   Multi-currency catalogs and currency conversion are not implemented.
 
 This quantity rule reflects the confirmed form simplification (scope decision
@@ -49,8 +90,9 @@ invalidates stale edits before removing the redundant fields.
 ### Permissions and data integrity
 
 - Existing CRM User, Admin, and System Admin groups can view, create, and edit
-  drafts, including optional assignment. Fine-grained worker/supervisor workflow
-  permissions remain future work.
+  orders, including assignment and the three workflow fields. Updating these
+  fields requires the existing order change permission; finer worker/supervisor
+  and payment permissions remain future work.
 - Creating a customer inline also requires the existing customer creation permission.
 - Order/customer/item/service changes save in one transaction. Invalid submissions
   do not leave a partial order or customer behind.
@@ -58,9 +100,9 @@ invalidates stale edits before removing the redundant fields.
   overwriting a newer save. IDs from other orders/items are rejected.
 - Customer, product, and service deletion is blocked with a useful message if an
   order references the record.
-- Up to 50 items per draft and 50 service occurrences per item or general-extra
+- Up to 50 items per order and 50 service occurrences per item or general-extra
   section are supported. Service quantities must be positive whole numbers.
-- A saved draft requires a customer, at least one item, a deadline date on each
+- A saved order requires a customer, at least one item, a deadline date on each
   item, and at least one service per item. Deadline time is optional.
 
 ### Local setup and verification
@@ -108,8 +150,117 @@ company branding, and redirect handling. The live sign-in flow and new styleshee
 and JavaScript were checked successfully. The requested development password was
 set only in the local database; it is not applied automatically at startup.
 
+## Simplified order workflow: implemented
+
+The order form and list now use three independent order-level fields:
+
+| Field | Values |
+| --- | --- |
+| Status | Draft, In Progress, Complete, Cancelled |
+| Collected | Checkbox |
+| Payment status | Unpaid, Paid, Refunded |
+
+Complete describes finished work, independently of collection and payment. There
+is no item progress/status, partial collection, or separate Closed state. Items
+retain their individual deadlines and notes. Complete requires a user in Assigned
+To; clearing the assigned user
+while keeping Complete is rejected.
+
+| Saved stage | Customer/products/services/quantities | Deadlines and item/service notes | Order Notes | Assigned To / Payment status | Collected |
+| --- | --- | --- | --- | --- | --- |
+| Draft | Editable | Editable | Editable | Read-only | Read-only |
+| In Progress | Read-only | Editable | Editable | Editable | Read-only |
+| Complete | Read-only | Read-only | Read-only | Editable | Editable |
+| Cancelled | Read-only | Read-only | Editable | Read-only | Read-only |
+
+Field locks are based on the saved stage, including a Submit or Mark complete
+request. Submit first, then assign or update payment; mark Complete first, then
+record collection. Existing values are retained when a field becomes read-only,
+including after reopening/restoring an order; status changes do not erase them.
+
+The current status is shown in a labelled badge with text and a stage-specific
+colour. It has no radio buttons, dropdown, or editable status input. The server
+validates actions against the saved stage:
+
+| Current stage | Status-changing actions |
+| --- | --- |
+| Draft | Submit → In Progress; Delete draft removes a saved draft; Discard leaves an unsaved draft |
+| In Progress | Mark complete → Complete; Cancel order → Cancelled; Return to draft → Draft |
+| Complete | Reopen → In Progress |
+| Cancelled | Restore to draft → Draft |
+
+Each stage also has a Save button for its editable fields; saving alone never
+changes the status. Submit validates and saves the whole draft. Mark complete
+requires Assigned To. In Progress cancellation/restoration keeps the same order,
+items, service charges, and payment/collection values.
+
+Delete draft requires the order-delete permission, POST with CSRF, and the exact
+saved revision. A conditional database write protects against deletion after
+another user edits or submits the draft. It deletes only that draft and its
+items/service charges, retaining shared customer and catalog records. Standard
+CRM roles receive the permission when migrations/bootstrap permissions are run.
+
+Customer/product/service/quantity locking is enforced on the server, including
+forged requests. In Progress saves bind only deadlines and internal notes on rows
+loaded from that order. Posted IDs, management counts, add/delete flags, and
+prices cannot change its commercial contents. Only the allowed fields are
+written; captured prices are retained even after catalog prices or links change.
+Invalid deadlines prevent the entire save or transition, and revision checking
+protects these edits from stale requests. Omitted details are preserved; blank
+optional times and notes explicitly clear them.
+
+Returning to Draft unlocks commercial fields on the next page load rather than
+accepting those edits in the same request that changes the status. In Progress
+deadline/note changes can be saved with Mark complete, Cancel order, or Return to
+draft. Complete/Cancelled must first be reopened/restored before deadlines or
+item/service notes can change. Cancelled allows only order-level notes, including
+on a Restore to draft request; assignment/payment and other fields stay locked
+for that request. Existing stored values are preserved. Direct status values and
+obsolete transition parameters cannot bypass the action rules.
+
+The fields are saved manually and do not change one another automatically. Paid
+and Refunded are currently manual indicators, not recorded transactions with an
+amount, date, method, or reference. Selecting Refunded does not transfer money or
+change captured charges. Detailed payment/refund recording is still later work.
+
+Migration 0009 preserves existing orders and adds safe defaults of not collected
+and Unpaid. The allowed status/payment values are validated in the form and
+database. Revision checking protects all three fields from stale saves.
+
+Focused validation includes 74 order tests for stage-specific locks, status changes,
+submission, required assignment before completion, server-enforced locks,
+returning to Draft, permissions, stale edits, filters, and pagination. Locked
+orders retain their captured services and prices even after catalog links change.
+
+Migrations 0009 and 0010 are applied locally. Migration 0010 extends payment choices
+and the database constraint to accept Refunded, preserving all existing orders and
+charges. The order list also correctly handles orders without an assigned user.
+
+Additional action checks cover draft deletion and its dependent rows, retained
+customer/catalog records, deletion permissions, CSRF, stale-delete conflicts, and
+the buttons available in each stage, rejected
+out-of-stage actions, forged status submissions, duplicate Submit requests, and
+Save preserving the current status.
+
+All 77 order/migration tests pass. Rendered HTML checks confirm enabled
+In Progress deadlines/notes and disabled commercial controls, including parent
+fieldset behavior. Tests cover price preservation after catalog changes, invalid
+deadlines, stale edits, row ownership, clearing optional details, and locks after
+completion. Cancellation checks cover notes-only saves, preservation of omitted
+notes, explicit clearing, stale-save protection, and field locks during
+restoration. Refund checks cover saving in In Progress/Complete, the list badge
+and combined filters, preserved field locks in Draft/Cancelled, and migration
+preservation of existing orders/charges. Draft deletion and Complete-only
+collection remain covered.
+
+Seven JavaScript confirmation tests pass with
+`node --test crm/tests/js/order-confirmation.test.cjs`, covering immediate Save,
+top/bottom submitters, cancellation/Escape, revalidation, Delete draft, Discard,
+and already-cancelled events. Rendered stage-control checks also pass.
+
 ## Subsequent milestones
 
-Order confirmation, work progress, delivery tracking, invoices/PDF/email,
-full-payment recording, closure/reopening, and operational/financial dashboards
-and reports are not implemented yet. Saving a draft does not issue an invoice.
+Invoice/PDF/email generation, full-payment records, finer permissions and change
+history, and dashboards/reports remain to be implemented. The planned invoice
+confirmation action will integrate with the Draft-to-In Progress transition.
+Currently, saving or changing an order's status does not issue an invoice.

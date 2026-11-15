@@ -14,6 +14,7 @@ from crm.models import (
     ServiceOrder,
     SystemSettings,
 )
+from crm.order_workflow import ORDER_ACTIONS, SAVE_LABELS
 
 
 class CustomerChoiceField(forms.ModelChoiceField):
@@ -32,7 +33,7 @@ class CustomerChoiceField(forms.ModelChoiceField):
         return f"{customer} — {details}" if details else str(customer)
 
 
-class AssigneeChoiceField(forms.ModelChoiceField):
+class AssignedToChoiceField(forms.ModelChoiceField):
     def label_from_instance(self, user):
         return (
             f"{user.get_full_name()} ({user.username})"
@@ -53,41 +54,133 @@ class ServiceOrderForm(forms.ModelForm):
     customer = CustomerChoiceField(
         queryset=Customer.objects.none(), required=False, widget=forms.HiddenInput
     )
-    assigned_to = AssigneeChoiceField(
+    assigned_to = AssignedToChoiceField(
         queryset=get_user_model().objects.none(), required=False
     )
     revision = forms.IntegerField(min_value=1, widget=forms.HiddenInput, required=False)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.locked = bool(
+            self.instance.pk and self.instance.status != ServiceOrder.Status.DRAFT
+        )
+        self.original_status = self.instance.status
+        self.actions = ORDER_ACTIONS[self.original_status]
+        self.action = self.data.get("action", "save") if self.is_bound else "save"
+        selected_action = next(
+            (action for action in self.actions if action["name"] == self.action), None
+        )
+        self.target_status = (
+            selected_action["target"] if selected_action else self.original_status
+        )
+        self.invalid_action = self.action != "save" and selected_action is None
         self.fields["customer"].queryset = Customer.objects.order_by(
             "first_name", "last_name", "pk"
         )
-        assignees = get_user_model().objects.filter(is_active=True)
+        available_users = get_user_model().objects.filter(is_active=True)
         if self.instance.assigned_to_id:
-            assignees = get_user_model().objects.filter(
+            available_users = get_user_model().objects.filter(
                 Q(is_active=True) | Q(pk=self.instance.assigned_to_id)
             )
-        self.fields["assigned_to"].queryset = assignees.order_by(
+        self.fields["assigned_to"].queryset = available_users.order_by(
             "first_name", "last_name", "username"
         )
         self.fields["assigned_to"].empty_label = "Unassigned"
-        self.fields["assigned_to"].label = "Assignee"
+        self.fields["assigned_to"].label = "Assigned To"
         self.fields["notes"].label = "Order notes"
+        if self.original_status in (
+            ServiceOrder.Status.DRAFT,
+            ServiceOrder.Status.CANCELLED,
+        ):
+            for name in ("assigned_to", "payment_status"):
+                self.fields[name].disabled = True
+        if self.original_status != ServiceOrder.Status.COMPLETE:
+            self.fields["collected"].disabled = True
+        if self.locked:
+            for name in ("customer_mode", "customer"):
+                self.fields[name].disabled = True
+            if self.original_status == ServiceOrder.Status.COMPLETE:
+                self.fields["notes"].disabled = True
+            elif self.is_bound and "notes" not in self.data:
+                self.data = self.data.copy()
+                self.data["notes"] = self.instance.notes
+        if self.original_status == ServiceOrder.Status.CANCELLED:
+            self.fields["notes"].help_text = (
+                "Add a cancellation reason or other internal notes."
+            )
         if self.instance.pk:
             self.fields["revision"].required = True
             self.initial["revision"] = self.instance.revision
 
     def clean(self):
         data = super().clean()
+        if self.invalid_action:
+            self.add_error(
+                None,
+                "This action is not available for the current order status. Reload the order and use its action buttons.",
+            )
+        if "transition" in self.data or (
+            "status" in self.data and self.data["status"] != self.original_status
+        ):
+            self.add_error(None, "Use the order action buttons to change the status.")
         if data.get("customer_mode") == "existing" and not data.get("customer"):
             self.add_error("customer", "Choose a customer or create a new one.")
+        if self.target_status == ServiceOrder.Status.COMPLETE and not data.get(
+            "assigned_to"
+        ):
+            self.add_error(
+                "assigned_to", "Assign a user before marking the order Complete."
+            )
         return data
 
     class Meta:
         model = ServiceOrder
-        fields = ("customer", "assigned_to", "notes")
-        widgets = {"notes": forms.Textarea(attrs={"rows": 3})}
+        fields = (
+            "customer",
+            "assigned_to",
+            "collected",
+            "payment_status",
+            "notes",
+        )
+        labels = {"payment_status": "Payment status"}
+        widgets = {
+            "notes": forms.Textarea(attrs={"rows": 3}),
+        }
+
+
+class OrderFilterForm(forms.Form):
+    q = forms.CharField(
+        label="Search",
+        required=False,
+        max_length=200,
+        widget=forms.TextInput(
+            attrs={
+                "type": "search",
+                "placeholder": "Reference, customer, assigned user, or notes",
+            }
+        ),
+    )
+    status = forms.ChoiceField(
+        choices=[("", "All statuses"), *ServiceOrder.Status.choices],
+        required=False,
+    )
+    collected = forms.ChoiceField(
+        choices=[
+            ("", "All collections"),
+            ("yes", "Collected"),
+            ("no", "Not collected"),
+        ],
+        required=False,
+    )
+    payment_status = forms.ChoiceField(
+        label="Payment status",
+        choices=[("", "All payments"), *ServiceOrder.PaymentStatus.choices],
+        required=False,
+    )
+
+
+class DeleteDraftForm(forms.Form):
+    revision = forms.IntegerField(min_value=1, widget=forms.HiddenInput)
 
 
 class OrderItemForm(forms.ModelForm):
@@ -109,7 +202,7 @@ class OrderItemForm(forms.ModelForm):
 class OrderServiceChargeForm(forms.ModelForm):
     quantity = forms.IntegerField(min_value=1, max_value=100000000, initial=1)
 
-    def __init__(self, *args, product_id=None, general=False, **kwargs):
+    def __init__(self, *args, product_id=None, general=False, locked=False, **kwargs):
         super().__init__(*args, **kwargs)
         services = Service.objects.filter(products__isnull=True)
         if product_id and not general:
@@ -118,6 +211,10 @@ class OrderServiceChargeForm(forms.ModelForm):
             )
         elif not general:
             services = Service.objects.none()
+        if locked and self.instance.service_id:
+            services = Service.objects.filter(
+                Q(pk__in=services.values("pk")) | Q(pk=self.instance.service_id)
+            )
         self.fields["service"].queryset = services.distinct().order_by("name", "pk")
         self.fields["quantity"].label = "Quantity"
         self.fields["notes"].label = "Note (optional)"
@@ -136,6 +233,16 @@ class OrderServiceChargeForm(forms.ModelForm):
         model = OrderServiceCharge
         fields = ("service", "quantity", "notes")
         widgets = {"notes": forms.Textarea(attrs={"rows": 2})}
+
+
+class OrderItemDetailsForm(forms.ModelForm):
+    class Meta(OrderItemForm.Meta):
+        fields = ("due_date", "due_time", "notes")
+
+
+class OrderChargeNotesForm(forms.ModelForm):
+    class Meta(OrderServiceChargeForm.Meta):
+        fields = ("notes",)
 
 
 class OwnedInlineFormSet(BaseInlineFormSet):
@@ -192,11 +299,11 @@ GeneralChargeFormSet = inlineformset_factory(
 )
 
 
-class DraftConflict(Exception):
+class OrderConflict(Exception):
     pass
 
 
-class DraftOrderEditor:
+class OrderEditor:
     """Compose the order, inline customer, and nested item/service forms."""
 
     def __init__(self, *, user, instance=None, data=None):
@@ -204,18 +311,31 @@ class DraftOrderEditor:
         self.instance = instance or ServiceOrder(
             currency=SystemSettings.get_solo().default_currency
         )
+        self.locked = bool(
+            self.instance.pk and self.instance.status != ServiceOrder.Status.DRAFT
+        )
+        self.original_status = self.instance.status
+        self.details_editable = bool(
+            self.instance.pk and self.original_status == ServiceOrder.Status.IN_PROGRESS
+        )
+        self.detail_forms = []
         self.form = ServiceOrderForm(data, instance=self.instance)
-        self.new_customer = bool(data and data.get("customer_mode") == "new")
+        self.actions = self.form.actions
+        self.save_label = SAVE_LABELS[self.original_status]
+        self.new_customer = bool(
+            not self.locked and data and data.get("customer_mode") == "new"
+        )
         self.customer_form = CustomerForm(
             data if self.new_customer else None, prefix="customer"
         )
-        self.items = ItemFormSet(data, instance=self.instance, prefix="items")
+        item_data = None if self.locked else data
+        self.items = ItemFormSet(item_data, instance=self.instance, prefix="items")
         for item_form in self.items:
-            self._attach_services(item_form, data)
+            self._attach_services(item_form, item_data)
         self.empty_item = self.items.empty_form
         self._attach_services(self.empty_item, None)
         self.general = GeneralChargeFormSet(
-            data,
+            item_data,
             instance=self.instance,
             prefix="general",
             queryset=(
@@ -223,10 +343,41 @@ class DraftOrderEditor:
                 if self.instance.pk
                 else OrderServiceCharge.objects.none()
             ),
-            form_kwargs={"general": True},
+            form_kwargs={"general": True, "locked": self.locked},
         )
         self.general.empty_charge = self.general.empty_form
         self.general.empty_charge.prefix = "general-__charge__"
+        if self.locked:
+            for item_form in self.items:
+                self._attach_details(item_form, OrderItemDetailsForm, data)
+                for charge_form in item_form.services:
+                    self._attach_details(charge_form, OrderChargeNotesForm, data)
+            for charge_form in self.general:
+                self._attach_details(charge_form, OrderChargeNotesForm, data)
+
+    def _attach_details(self, form, detail_form_class, data):
+        for field in form.fields.values():
+            field.disabled = True
+        if not self.details_editable:
+            return
+        # Bind only non-commercial fields on rows loaded from this order. Posted
+        # IDs, management counts, add/delete flags, and prices are never consumed.
+        detail_data = None
+        if data is not None:
+            detail_data = {
+                form.add_prefix(name): data.get(
+                    form.add_prefix(name), getattr(form.instance, name)
+                )
+                for name in detail_form_class.Meta.fields
+            }
+        form.detail_form = detail_form_class(
+            detail_data, instance=form.instance, prefix=form.prefix
+        )
+        self.detail_forms.append(form.detail_form)
+
+    @property
+    def detail_errors(self):
+        return any(form.errors for form in self.detail_forms)
 
     def _attach_services(self, item_form, data):
         try:
@@ -237,7 +388,7 @@ class DraftOrderEditor:
             data,
             instance=item_form.instance,
             prefix=f"{item_form.prefix}-services",
-            form_kwargs={"product_id": product_id},
+            form_kwargs={"product_id": product_id, "locked": self.locked},
         )
         item_form.services.empty_charge = item_form.services.empty_form
         item_form.services.empty_charge.prefix = (
@@ -246,6 +397,10 @@ class DraftOrderEditor:
 
     def is_valid(self):
         valid = self.form.is_valid()
+        if self.locked:
+            for detail_form in self.detail_forms:
+                valid = detail_form.is_valid() and valid
+            return valid
         if self.new_customer:
             if not self.user.has_perm("crm.add_customer"):
                 self.form.add_error(
@@ -265,21 +420,29 @@ class DraftOrderEditor:
         if order.pk:
             revision = self.form.cleaned_data["revision"]
             updated = ServiceOrder.objects.filter(
-                pk=order.pk, revision=revision, status=ServiceOrder.Status.DRAFT
+                pk=order.pk, revision=revision, status=self.original_status
             ).update(revision=F("revision") + 1)
             if not updated:
-                raise DraftConflict(
+                raise OrderConflict(
                     "This order changed while you were editing. Reload it before saving again."
                 )
             order.revision = revision + 1
         else:
             order.created_by = self.user
+        order.status = self.form.target_status
         if self.new_customer:
             customer = self.customer_form.save(commit=False)
             customer.owner = self.user
             customer.save()
             order.customer = customer
         order.save()
+
+        if self.locked:
+            for detail_form in self.detail_forms:
+                if detail_form.has_changed():
+                    record = detail_form.save(commit=False)
+                    record.save(update_fields=detail_form.Meta.fields)
+            return order
 
         for item_form in self.items:
             if item_form.cleaned_data.get("DELETE"):

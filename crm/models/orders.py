@@ -8,6 +8,14 @@ from django.db import models
 class ServiceOrder(models.Model):
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"
+        IN_PROGRESS = "in_progress", "In Progress"
+        COMPLETE = "complete", "Complete"
+        CANCELLED = "cancelled", "Cancelled"
+
+    class PaymentStatus(models.TextChoices):
+        UNPAID = "unpaid", "Unpaid"
+        PAID = "paid", "Paid"
+        REFUNDED = "refunded", "Refunded"
 
     customer = models.ForeignKey(
         "crm.Customer", on_delete=models.PROTECT, related_name="orders"
@@ -28,6 +36,10 @@ class ServiceOrder(models.Model):
     status = models.CharField(
         max_length=20, choices=Status.choices, default=Status.DRAFT
     )
+    collected = models.BooleanField(default=False)
+    payment_status = models.CharField(
+        max_length=10, choices=PaymentStatus.choices, default=PaymentStatus.UNPAID
+    )
     currency = models.CharField(max_length=3)
     notes = models.TextField(blank=True)
     revision = models.PositiveIntegerField(default=1)
@@ -36,6 +48,18 @@ class ServiceOrder(models.Model):
 
     class Meta:
         ordering = ("-created_at", "-pk")
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(
+                    status__in=("draft", "in_progress", "complete", "cancelled")
+                ),
+                name="service_order_valid_status",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(payment_status__in=("unpaid", "paid", "refunded")),
+                name="service_order_valid_payment_status",
+            ),
+        ]
 
     @property
     def reference(self):

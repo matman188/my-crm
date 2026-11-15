@@ -6,7 +6,7 @@
             {% include 'crm/_order_charge.html' %}
         {% endfor %}
     </div>
-    <button class="button secondary" type="button" data-add-charge>Add {% if general %}extra{% else %}service{% endif %}</button>
+    <button class="button secondary" type="button" data-add-charge{% if editor.locked %} disabled{% endif %}>Add {% if general %}extra{% else %}service{% endif %}</button>
     <template data-charge-template>
         {% include 'crm/_order_charge.html' with charge_form=service_formset.empty_charge %}
     </template>

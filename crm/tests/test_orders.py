@@ -1,9 +1,11 @@
+import re
 from datetime import date, time
 from decimal import Decimal
+from html.parser import HTMLParser
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
-from django.test import TestCase
+from django.test import Client, TestCase
 from django.urls import reverse
 
 from crm.authz import ACCESS_LEVEL_USER, assign_access_level
@@ -18,7 +20,7 @@ from crm.models import (
 )
 
 
-class DraftOrderTests(TestCase):
+class ServiceOrderTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.user = get_user_model().objects.create_user(username="operator")
@@ -45,6 +47,7 @@ class DraftOrderTests(TestCase):
             "customer_mode": "existing",
             "customer": str((customer or self.customer).pk),
             "assigned_to": "",
+            "payment_status": ServiceOrder.PaymentStatus.UNPAID,
             "notes": "Call before collection",
             "items-TOTAL_FORMS": "1",
             "items-INITIAL_FORMS": "0",
@@ -68,9 +71,21 @@ class DraftOrderTests(TestCase):
         }
 
     def create_order(self, data=None):
-        response = self.client.post(reverse("create_order"), data or self.payload())
+        data = (data or self.payload()).copy()
+        # Prepare persisted-stage fixtures; transitions themselves are tested via actions.
+        fixture_status = data.pop("status", None)
+        response = self.client.post(reverse("create_order"), data)
         self.assertEqual(response.status_code, 302, getattr(response, "context", None))
-        return ServiceOrder.objects.latest("pk")
+        order = ServiceOrder.objects.latest("pk")
+        if fixture_status is not None:
+            order.status = fixture_status
+            order.assigned_to_id = data.get("assigned_to") or None
+            order.payment_status = data.get("payment_status", "unpaid")
+            order.collected = bool(data.get("collected"))
+            order.save(
+                update_fields=["status", "assigned_to", "payment_status", "collected"]
+            )
+        return order
 
     def edit_payload(self, order):
         data = self.payload()
@@ -80,6 +95,8 @@ class DraftOrderTests(TestCase):
         data.update(
             {
                 "revision": str(order.revision),
+                "payment_status": order.payment_status,
+                "assigned_to": str(order.assigned_to_id or ""),
                 "items-INITIAL_FORMS": "1",
                 "items-0-id": str(item.pk),
                 "items-0-services-INITIAL_FORMS": "2",
@@ -89,6 +106,19 @@ class DraftOrderTests(TestCase):
                 "general-0-id": str(general.pk),
             }
         )
+        if order.collected:
+            data["collected"] = "on"
+        return data
+
+    def workflow_payload(self, order, **changes):
+        data = {
+            "revision": str(order.revision),
+            "assigned_to": str(order.assigned_to_id or ""),
+            "payment_status": order.payment_status,
+        }
+        if order.collected:
+            data["collected"] = "on"
+        data.update(changes)
         return data
 
     def test_authentication_and_permissions_are_required(self):
@@ -108,14 +138,20 @@ class DraftOrderTests(TestCase):
         self.assertContains(response, 'role="combobox"')
         self.assertContains(response, "data-customer-dialog")
         self.assertContains(response, "Create New")
-        self.assertContains(response, "Assignee")
+        self.assertContains(response, "Assigned To")
         self.assertNotContains(response, 'name="items-0-quantity"')
         self.assertNotContains(response, 'name="items-0-description"')
         self.assertNotContains(response, "Times per product unit")
         self.assertNotContains(response, 'type="radio"')
+        self.assertNotContains(response, 'name="status"')
+        self.assertContains(response, 'aria-label="Order summary"')
+        self.assertNotContains(response, "order-status-banner")
+        self.assertContains(response, "data-order-total", count=2)
+        self.assertContains(response, "ZAR 0.00", count=2)
+        self.assertContains(response, 'name="action" value="submit"')
         html = response.content.decode()
         self.assertLess(
-            html.index("<h3>Extras</h3>"), html.index("<h3>Order details</h3>")
+            html.index("<h3>Order Details</h3>"), html.index("<h3>Customer</h3>")
         )
         self.assertContains(response, "order-service-catalog")
         self.assertContains(response, 'name="items-0-services-0-service"')
@@ -132,11 +168,12 @@ class DraftOrderTests(TestCase):
                 "unit_price": "0.01",
                 "total": "0.01",
                 "currency": "USD",
-                "status": "closed",
             }
         )
         order = self.create_order(data)
         self.assertEqual(order.status, ServiceOrder.Status.DRAFT)
+        self.assertEqual(order.payment_status, ServiceOrder.PaymentStatus.UNPAID)
+        self.assertFalse(order.collected)
         self.assertEqual(order.currency, "ZAR")
         self.assertEqual(order.created_by, self.user)
         self.assertIsNone(order.assigned_to)
@@ -155,7 +192,7 @@ class DraftOrderTests(TestCase):
         self.assertContains(response, "Right side")
         self.assertContains(response, "Call before collection")
 
-    def test_customer_can_be_created_inline_and_order_can_be_assigned(self):
+    def test_customer_can_be_created_inline_while_draft_assignment_is_locked(self):
         data = self.payload()
         data.update(
             {
@@ -171,7 +208,7 @@ class DraftOrderTests(TestCase):
         order = self.create_order(data)
         self.assertEqual(order.customer.first_name, "New dancer")
         self.assertEqual(order.customer.owner, self.user)
-        self.assertEqual(order.assigned_to, self.worker)
+        self.assertIsNone(order.assigned_to)
         self.assertEqual(order.items.get().due_time, time(15, 30))
 
     def test_invalid_nested_form_does_not_create_customer_or_partial_order(self):
@@ -268,7 +305,7 @@ class DraftOrderTests(TestCase):
         self.assertEqual(charge.unit_price, Decimal("12.35"))
         self.assertEqual(charge.notes, "Updated right side")
         self.assertEqual(order.items.get().due_time, time(18, 45))
-        self.assertEqual(order.assigned_to, self.worker)
+        self.assertIsNone(order.assigned_to)
 
     def test_stale_edit_does_not_overwrite_order_or_create_inline_customer(self):
         order = self.create_order()
@@ -421,6 +458,7 @@ class DraftOrderTests(TestCase):
     def test_orders_can_be_searched_by_reference_customer_and_assignee(self):
         data = self.payload()
         data["assigned_to"] = str(self.worker.pk)
+        data["status"] = "in_progress"
         order = self.create_order(data)
         self.create_order(
             self.payload(customer=Customer.objects.create(first_name="Unrelated"))
@@ -432,3 +470,1399 @@ class DraftOrderTests(TestCase):
             self.assertContains(response, "99.40")
         response = self.client.get(reverse("orders"), {"q": "no matching orders"})
         self.assertContains(response, "No orders match your search.")
+
+    def test_all_four_statuses_remain_editable_and_preserve_services(self):
+        order = self.create_order()
+        charge_ids = list(order.charges.values_list("pk", flat=True))
+        for action, status in [
+            ("submit", "in_progress"),
+            ("complete", "complete"),
+            ("reopen", "in_progress"),
+            ("return_to_draft", "draft"),
+            ("submit", "in_progress"),
+            ("cancel", "cancelled"),
+            ("restore_to_draft", "draft"),
+        ]:
+            with self.subTest(status=status):
+                data = self.edit_payload(order)
+                data["action"] = action
+                data["assigned_to"] = str(self.worker.pk)
+                response = self.client.post(
+                    reverse("edit_order", args=[order.pk]), data
+                )
+                self.assertRedirects(response, reverse("edit_order", args=[order.pk]))
+                order.refresh_from_db()
+                self.assertEqual(order.status, status)
+                self.assertEqual(order.total, Decimal("99.40"))
+                self.assertEqual(
+                    list(order.charges.values_list("pk", flat=True)), charge_ids
+                )
+                self.assertEqual(
+                    order.payment_status, ServiceOrder.PaymentStatus.UNPAID
+                )
+                self.assertFalse(order.collected)
+
+    def test_collection_and_payment_can_change_independently_on_complete_order(self):
+        data = self.payload()
+        data["status"] = ServiceOrder.Status.COMPLETE
+        data["assigned_to"] = str(self.worker.pk)
+        order = self.create_order(data)
+        for paid, collected in [
+            ("paid", False),
+            ("paid", True),
+            ("unpaid", True),
+            ("unpaid", False),
+        ]:
+            with self.subTest(paid=paid, collected=collected):
+                data = self.edit_payload(order)
+                data["payment_status"] = paid
+                if collected:
+                    data["collected"] = "on"
+                else:
+                    data.pop("collected", None)
+                self.assertEqual(
+                    self.client.post(
+                        reverse("edit_order", args=[order.pk]), data
+                    ).status_code,
+                    302,
+                )
+                order.refresh_from_db()
+                self.assertEqual(order.status, ServiceOrder.Status.COMPLETE)
+                self.assertEqual(order.payment_status, paid)
+                self.assertEqual(order.collected, collected)
+
+    def test_status_changes_preserve_paid_and_collected_flags(self):
+        data = self.payload()
+        data.update(
+            {
+                "payment_status": "paid",
+                "collected": "on",
+                "assigned_to": str(self.worker.pk),
+            }
+        )
+        order = self.create_order(dict(data, status="complete"))
+        for action, status in [
+            ("reopen", "in_progress"),
+            ("cancel", "cancelled"),
+            ("restore_to_draft", "draft"),
+            ("submit", "in_progress"),
+            ("complete", "complete"),
+        ]:
+            data = self.edit_payload(order)
+            data["action"] = action
+            self.assertEqual(
+                self.client.post(
+                    reverse("edit_order", args=[order.pk]), data
+                ).status_code,
+                302,
+            )
+            order.refresh_from_db()
+            self.assertTrue(order.collected)
+            self.assertEqual(order.payment_status, ServiceOrder.PaymentStatus.PAID)
+            self.assertEqual(order.status, status)
+
+    def test_refunded_can_be_saved_without_changing_order_work_or_charges(self):
+        for status in ("in_progress", "complete"):
+            with self.subTest(status=status):
+                order = self.create_order(
+                    dict(
+                        self.payload(),
+                        status=status,
+                        assigned_to=str(self.worker.pk),
+                        payment_status="paid",
+                        collected="on",
+                    )
+                )
+                charges = list(order.charges.values())
+                data = self.workflow_payload(order, payment_status="refunded")
+                self.assertEqual(
+                    self.client.post(
+                        reverse("edit_order", args=[order.pk]), data
+                    ).status_code,
+                    302,
+                )
+                order.refresh_from_db()
+                self.assertEqual(
+                    order.payment_status, ServiceOrder.PaymentStatus.REFUNDED
+                )
+                self.assertEqual(order.status, status)
+                self.assertTrue(order.collected)
+                self.assertEqual(order.assigned_to, self.worker)
+                self.assertEqual(order.notes, "Call before collection")
+                self.assertEqual(order.currency, "ZAR")
+                self.assertEqual(order.total, Decimal("99.40"))
+                self.assertEqual(list(order.charges.values()), charges)
+                response = self.client.get(reverse("edit_order", args=[order.pk]))
+                self.assertContains(
+                    response,
+                    '<option value="refunded" selected>Refunded</option>',
+                    html=True,
+                )
+
+    def test_refunded_orders_have_a_list_badge_and_can_be_filtered(self):
+        refunded = self.create_order(
+            dict(
+                self.payload(),
+                status="complete",
+                payment_status="refunded",
+                assigned_to=str(self.worker.pk),
+            )
+        )
+        cancelled = self.create_order(
+            dict(self.payload(), status="cancelled", payment_status="refunded")
+        )
+        self.create_order(
+            dict(self.payload(), status="in_progress", payment_status="paid")
+        )
+        self.create_order()
+        response = self.client.get(reverse("orders"), {"payment_status": "refunded"})
+        self.assertEqual(
+            {order.pk for order in response.context["page_obj"]},
+            {refunded.pk, cancelled.pk},
+        )
+        self.assertContains(
+            response,
+            'class="role-badge order-payment-refunded">Refunded</span>',
+            count=2,
+        )
+        self.assertContains(
+            response, '<option value="refunded" selected>Refunded</option>', html=True
+        )
+        response = self.client.get(
+            reverse("orders"), {"payment_status": "refunded", "status": "complete"}
+        )
+        self.assertEqual(
+            {order.pk for order in response.context["page_obj"]}, {refunded.pk}
+        )
+
+    def test_refunded_status_obeys_draft_and_cancelled_field_locks(self):
+        for status in ("draft", "cancelled"):
+            for payment_status in ServiceOrder.PaymentStatus.values:
+                with self.subTest(status=status, payment_status=payment_status):
+                    order = self.create_order(
+                        dict(
+                            self.payload(), status=status, payment_status=payment_status
+                        )
+                    )
+                    data = self.edit_payload(order)
+                    data["payment_status"] = (
+                        "unpaid" if payment_status == "refunded" else "refunded"
+                    )
+                    self.assertEqual(
+                        self.client.post(
+                            reverse("edit_order", args=[order.pk]), data
+                        ).status_code,
+                        302,
+                    )
+                    order.refresh_from_db()
+                    self.assertEqual(order.payment_status, payment_status)
+                    self.assertEqual(order.status, status)
+
+    def test_invalid_order_and_payment_statuses_are_rejected(self):
+        for field, value in [
+            ("status", "closed"),
+            ("status", "completed"),
+        ]:
+            data = self.payload()
+            data[field] = value
+            response = self.client.post(reverse("create_order"), data)
+            self.assertEqual(response.status_code, 200)
+            self.assertIn(
+                field if field == "payment_status" else "__all__",
+                response.context["editor"].form.errors,
+            )
+            self.assertFalse(ServiceOrder.objects.exists())
+
+    def test_workflow_changes_require_order_change_permission(self):
+        order = self.create_order()
+        data = self.edit_payload(order)
+        data.update({"action": "complete", "payment_status": "paid", "collected": "on"})
+        reader = get_user_model().objects.create_user(username="order_reader")
+        reader.user_permissions.add(
+            Permission.objects.get(codename="view_serviceorder")
+        )
+        self.client.force_login(reader)
+        response = self.client.post(reverse("edit_order", args=[order.pk]), data)
+        self.assertEqual(response.status_code, 403)
+        order.refresh_from_db()
+        self.assertEqual(order.status, ServiceOrder.Status.DRAFT)
+        self.assertEqual(order.payment_status, ServiceOrder.PaymentStatus.UNPAID)
+        self.assertFalse(order.collected)
+
+    def test_stale_edit_cannot_overwrite_new_workflow_values(self):
+        order = self.create_order()
+        stale = self.edit_payload(order)
+        current = self.edit_payload(order)
+        current.update(
+            {"action": "submit", "payment_status": "paid", "collected": "on"}
+        )
+        self.assertEqual(
+            self.client.post(
+                reverse("edit_order", args=[order.pk]), current
+            ).status_code,
+            302,
+        )
+        stale["action"] = "complete"
+        stale["assigned_to"] = str(self.worker.pk)
+        response = self.client.post(reverse("edit_order", args=[order.pk]), stale)
+        self.assertContains(response, "changed while you were editing")
+        order.refresh_from_db()
+        self.assertEqual(order.status, ServiceOrder.Status.IN_PROGRESS)
+        self.assertEqual(order.payment_status, ServiceOrder.PaymentStatus.UNPAID)
+        self.assertFalse(order.collected)
+        self.assertEqual(order.revision, 2)
+
+    def test_workflow_filters_can_be_used_separately_or_together(self):
+        first = self.create_order(
+            dict(self.payload(), status="complete", assigned_to=str(self.worker.pk))
+        )
+        second = self.create_order(
+            dict(
+                self.payload(),
+                status="complete",
+                payment_status="paid",
+                collected="on",
+                assigned_to=str(self.worker.pk),
+            )
+        )
+        third = self.create_order(dict(self.payload(), status="in_progress"))
+        cases = [
+            ({"status": "complete"}, {first.pk, second.pk}),
+            ({"payment_status": "unpaid"}, {first.pk, third.pk}),
+            ({"collected": "no"}, {first.pk, third.pk}),
+            ({"collected": "yes"}, {second.pk}),
+            (
+                {"status": "complete", "payment_status": "unpaid", "collected": "no"},
+                {first.pk},
+            ),
+            (
+                {
+                    "q": self.customer.email,
+                    "payment_status": "paid",
+                    "collected": "yes",
+                },
+                {second.pk},
+            ),
+            ({"status": "cancelled"}, set()),
+        ]
+        for filters, expected in cases:
+            with self.subTest(filters=filters):
+                response = self.client.get(reverse("orders"), filters)
+                self.assertEqual(
+                    {order.pk for order in response.context["page_obj"]}, expected
+                )
+        response = self.client.get(reverse("orders"))
+        self.assertContains(response, "In Progress")
+        self.assertContains(response, "Payment status")
+        self.assertContains(response, "Collected")
+
+    def test_invalid_list_filters_show_errors_instead_of_unfiltered_records(self):
+        self.create_order()
+        for filters in [
+            {"status": "closed"},
+            {"payment_status": "partial"},
+            {"collected": "maybe"},
+        ]:
+            response = self.client.get(reverse("orders"), filters)
+            self.assertTrue(response.context["filter_form"].errors)
+            self.assertEqual(response.context["page_obj"].paginator.count, 0)
+
+    def test_pagination_retains_all_workflow_filters(self):
+        ServiceOrder.objects.bulk_create(
+            [
+                ServiceOrder(
+                    customer=self.customer,
+                    currency="ZAR",
+                    status="complete",
+                    collected=True,
+                )
+                for _ in range(26)
+            ]
+        )
+        filters = {
+            "status": "complete",
+            "payment_status": "unpaid",
+            "collected": "yes",
+            "q": "Alex",
+        }
+        response = self.client.get(reverse("orders"), filters)
+        self.assertEqual(response.context["page_obj"].paginator.count, 26)
+        for query_part in [
+            "status=complete",
+            "payment_status=unpaid",
+            "collected=yes",
+            "q=Alex",
+            "page=2",
+        ]:
+            self.assertContains(response, query_part)
+        response = self.client.get(reverse("orders"), dict(filters, page=2))
+        self.assertEqual(response.context["page_obj"].number, 2)
+        self.assertEqual(len(response.context["page_obj"]), 1)
+
+    def test_submit_draft_saves_changes_and_locks_order(self):
+        order = self.create_order()
+        data = self.edit_payload(order)
+        data.update(
+            {
+                "action": "submit",
+                "notes": "Instructions before submission",
+                "items-0-services-0-quantity": "3",
+                "items-0-due_time": "16:30",
+            }
+        )
+        self.assertRedirects(
+            self.client.post(reverse("edit_order", args=[order.pk]), data),
+            reverse("edit_order", args=[order.pk]),
+        )
+        order.refresh_from_db()
+        self.assertEqual(order.status, ServiceOrder.Status.IN_PROGRESS)
+        self.assertIsNone(order.assigned_to)
+        self.assertEqual(order.notes, "Instructions before submission")
+        self.assertEqual(order.items.get().due_time, time(16, 30))
+        self.assertEqual(order.total, Decimal("111.75"))
+        response = self.client.get(reverse("edit_order", args=[order.pk]))
+        self.assertTrue(response.context["editor"].locked)
+        self.assertContains(response, 'data-order-locked="true"')
+        self.assertFalse(response.context["editor"].form.fields["notes"].disabled)
+        self.assertFalse(response.context["editor"].form.fields["assigned_to"].disabled)
+        self.assertNotContains(response, 'name="action" value="submit"')
+
+    def test_draft_submission_does_not_accept_assignment(self):
+        data = dict(self.payload(), action="submit", assigned_to=str(self.worker.pk))
+        order = self.create_order(data)
+        self.assertEqual(order.status, ServiceOrder.Status.IN_PROGRESS)
+        self.assertIsNone(order.assigned_to)
+
+    def test_invalid_draft_cannot_be_submitted(self):
+        order = self.create_order()
+        data = self.edit_payload(order)
+        data.update(
+            {
+                "action": "submit",
+                "notes": "Do not save",
+                "items-0-due_date": "",
+            }
+        )
+        response = self.client.post(reverse("edit_order", args=[order.pk]), data)
+        self.assertEqual(response.status_code, 200)
+        order.refresh_from_db()
+        self.assertEqual(order.status, ServiceOrder.Status.DRAFT)
+        self.assertEqual(order.revision, 1)
+        self.assertEqual(order.notes, "Call before collection")
+
+    def test_completion_requires_assignment_and_accepts_it_in_same_save(self):
+        order = self.create_order(dict(self.payload(), status="in_progress"))
+        data = self.workflow_payload(order, action="complete")
+        response = self.client.post(reverse("edit_order", args=[order.pk]), data)
+        self.assertContains(
+            response, "Assign a user before marking the order Complete."
+        )
+        order.refresh_from_db()
+        self.assertEqual(order.status, ServiceOrder.Status.IN_PROGRESS)
+        self.assertEqual(order.revision, 1)
+        data["assigned_to"] = str(self.worker.pk)
+        self.assertEqual(
+            self.client.post(reverse("edit_order", args=[order.pk]), data).status_code,
+            302,
+        )
+        order.refresh_from_db()
+        self.assertEqual(order.status, ServiceOrder.Status.COMPLETE)
+        self.assertEqual(order.assigned_to, self.worker)
+        self.assertEqual(order.total, Decimal("99.40"))
+
+    def test_completed_order_cannot_clear_its_assigned_user(self):
+        order = self.create_order(
+            dict(self.payload(), status="complete", assigned_to=str(self.worker.pk))
+        )
+        data = self.workflow_payload(order, assigned_to="")
+        response = self.client.post(reverse("edit_order", args=[order.pk]), data)
+        self.assertContains(
+            response, "Assign a user before marking the order Complete."
+        )
+        order.refresh_from_db()
+        self.assertEqual(order.assigned_to, self.worker)
+        self.assertEqual(order.revision, 1)
+
+    def test_complete_and_cancelled_orders_preserve_their_locked_details(self):
+        for status in [
+            ServiceOrder.Status.COMPLETE,
+            ServiceOrder.Status.CANCELLED,
+        ]:
+            with self.subTest(status=status):
+                order = self.create_order(
+                    dict(self.payload(), status=status, assigned_to=str(self.worker.pk))
+                )
+                original_item = order.items.get()
+                original_charges = list(
+                    order.charges.values_list("pk", "quantity", "unit_price", "notes")
+                )
+                data = self.edit_payload(order)
+                data.update(
+                    {
+                        "customer_mode": "new",
+                        "customer-first_name": "Forged customer",
+                        "notes": "Updated order notes",
+                        "items-0-DELETE": "on",
+                        "items-0-notes": "Forged item notes",
+                        "items-0-due_date": "2027-01-01",
+                        "items-0-due_time": "18:45",
+                        "items-0-services-0-quantity": "999",
+                        "general-0-notes": "Forged service note",
+                        "payment_status": "paid",
+                        "collected": "on",
+                    }
+                )
+                self.assertEqual(
+                    self.client.post(
+                        reverse("edit_order", args=[order.pk]), data
+                    ).status_code,
+                    302,
+                )
+                order.refresh_from_db()
+                original_item.refresh_from_db()
+                self.assertEqual(order.customer, self.customer)
+                self.assertFalse(
+                    Customer.objects.filter(first_name="Forged customer").exists()
+                )
+                self.assertEqual(
+                    order.notes,
+                    (
+                        "Updated order notes"
+                        if status == "cancelled"
+                        else "Call before collection"
+                    ),
+                )
+                self.assertEqual(original_item.notes, "Keep the original ribbons")
+                self.assertEqual(original_item.due_date, date(2026, 11, 20))
+                self.assertIsNone(original_item.due_time)
+                self.assertEqual(
+                    list(
+                        order.charges.values_list(
+                            "pk", "quantity", "unit_price", "notes"
+                        )
+                    ),
+                    original_charges,
+                )
+                self.assertEqual(
+                    order.payment_status,
+                    (
+                        ServiceOrder.PaymentStatus.PAID
+                        if status == "complete"
+                        else ServiceOrder.PaymentStatus.UNPAID
+                    ),
+                )
+                self.assertEqual(
+                    order.collected, status == ServiceOrder.Status.COMPLETE
+                )
+
+    def test_return_to_draft_unlocks_details_on_the_next_request(self):
+        order = self.create_order(dict(self.payload(), status="in_progress"))
+        data = self.workflow_payload(
+            order, action="return_to_draft", notes="Updated during unlock"
+        )
+        self.assertEqual(
+            self.client.post(reverse("edit_order", args=[order.pk]), data).status_code,
+            302,
+        )
+        order.refresh_from_db()
+        self.assertEqual(order.status, ServiceOrder.Status.DRAFT)
+        self.assertEqual(order.notes, "Updated during unlock")
+        response = self.client.get(reverse("edit_order", args=[order.pk]))
+        self.assertFalse(response.context["editor"].locked)
+        self.assertFalse(response.context["editor"].form.fields["notes"].disabled)
+        self.assertContains(response, 'name="action" value="submit"')
+        data = self.edit_payload(order)
+        data.update(
+            {"notes": "Edited after reopening", "items-0-services-0-quantity": "3"}
+        )
+        self.assertEqual(
+            self.client.post(reverse("edit_order", args=[order.pk]), data).status_code,
+            302,
+        )
+        order.refresh_from_db()
+        self.assertEqual(order.notes, "Edited after reopening")
+        self.assertEqual(order.total, Decimal("111.75"))
+
+    def test_stale_draft_cannot_overwrite_a_submitted_order(self):
+        order = self.create_order()
+        stale = self.edit_payload(order)
+        submitted = self.edit_payload(order)
+        submitted["action"] = "submit"
+        self.assertEqual(
+            self.client.post(
+                reverse("edit_order", args=[order.pk]), submitted
+            ).status_code,
+            302,
+        )
+        stale["notes"] = "Outdated edits"
+        response = self.client.post(reverse("edit_order", args=[order.pk]), stale)
+        self.assertContains(response, "changed while you were editing")
+        order.refresh_from_db()
+        self.assertEqual(order.status, ServiceOrder.Status.IN_PROGRESS)
+        self.assertEqual(order.notes, "Call before collection")
+        self.assertEqual(order.revision, 2)
+
+    def test_locked_order_keeps_captured_services_after_catalog_links_change(self):
+        order = self.create_order(dict(self.payload(), status="in_progress"))
+        self.service.products.set([self.other_product])
+        response = self.client.get(reverse("edit_order", args=[order.pk]))
+        charge_form = response.context["editor"].items.forms[0].services.forms[0]
+        self.assertTrue(
+            charge_form.fields["service"].queryset.filter(pk=self.service.pk).exists()
+        )
+        data = self.workflow_payload(order, payment_status="paid")
+        self.assertEqual(
+            self.client.post(reverse("edit_order", args=[order.pk]), data).status_code,
+            302,
+        )
+        order.refresh_from_db()
+        self.assertEqual(order.total, Decimal("99.40"))
+        self.assertEqual(order.notes, "Call before collection")
+
+    def test_in_progress_deadlines_and_all_internal_notes_can_change_without_repricing(
+        self,
+    ):
+        order = self.create_order(dict(self.payload(), status="in_progress"))
+        before = list(
+            order.charges.values_list("pk", "service_id", "quantity", "unit_price")
+        )
+        self.service.price = Decimal("999.00")
+        self.service.save(update_fields=["price"])
+        self.service.products.set([self.other_product])
+        data = self.edit_payload(order)
+        data.update(
+            {
+                "notes": "Customer requested a later collection",
+                "items-0-due_date": "2026-12-02",
+                "items-0-due_time": "17:15",
+                "items-0-notes": "New item instructions",
+                "items-0-services-0-notes": "Updated first occurrence",
+                "items-0-services-1-notes": "Updated second occurrence",
+                "general-0-notes": "Updated extra instructions",
+                "customer": "999999",
+                "customer_mode": "new",
+                "customer-first_name": "Not a new customer",
+                "items-0-product": str(self.other_product.pk),
+                "items-0-DELETE": "on",
+                "items-0-services-0-service": str(self.other_service.pk),
+                "items-0-services-0-quantity": "999",
+                "items-0-services-0-unit_price": "0.01",
+                "items-0-services-0-DELETE": "on",
+                "general-0-quantity": "999",
+                "general-0-DELETE": "on",
+                "items-TOTAL_FORMS": "0",
+                "general-TOTAL_FORMS": "0",
+            }
+        )
+        self.assertEqual(
+            self.client.post(reverse("edit_order", args=[order.pk]), data).status_code,
+            302,
+        )
+        order.refresh_from_db()
+        item = order.items.get()
+        self.assertEqual(order.status, "in_progress")
+        self.assertEqual(order.customer, self.customer)
+        self.assertFalse(
+            Customer.objects.filter(first_name="Not a new customer").exists()
+        )
+        self.assertEqual(order.notes, "Customer requested a later collection")
+        self.assertEqual(item.product, self.product)
+        self.assertEqual(item.due_date, date(2026, 12, 2))
+        self.assertEqual(item.due_time, time(17, 15))
+        self.assertEqual(item.notes, "New item instructions")
+        self.assertEqual(
+            list(
+                order.charges.values_list("pk", "service_id", "quantity", "unit_price")
+            ),
+            before,
+        )
+        self.assertEqual(
+            list(item.charges.values_list("notes", flat=True)),
+            ["Updated first occurrence", "Updated second occurrence"],
+        )
+        self.assertEqual(
+            order.charges.get(item__isnull=True).notes, "Updated extra instructions"
+        )
+        self.assertEqual(order.total, Decimal("99.40"))
+
+    def test_in_progress_optional_time_and_notes_can_be_cleared(self):
+        order = self.create_order(
+            dict(self.payload(), status="in_progress", **{"items-0-due_time": "09:00"})
+        )
+        data = self.workflow_payload(order)
+        data.update(
+            {
+                "notes": "",
+                "items-0-due_time": "",
+                "items-0-notes": "",
+                "items-0-services-0-notes": "",
+                "general-0-notes": "",
+            }
+        )
+        self.assertEqual(
+            self.client.post(reverse("edit_order", args=[order.pk]), data).status_code,
+            302,
+        )
+        order.refresh_from_db()
+        self.assertEqual(order.notes, "")
+        item = order.items.get()
+        self.assertIsNone(item.due_time)
+        self.assertEqual(item.due_date, date(2026, 11, 20))
+        self.assertEqual(item.notes, "")
+        self.assertEqual(
+            list(item.charges.values_list("notes", flat=True)), ["", "Right side"]
+        )
+        self.assertEqual(order.charges.get(item__isnull=True).notes, "")
+
+    def test_invalid_in_progress_deadline_prevents_all_changes_and_completion(self):
+        order = self.create_order(dict(self.payload(), status="in_progress"))
+        for changes, field in [
+            ({"items-0-due_date": ""}, "due_date"),
+            ({"items-0-due_date": "bad-date"}, "due_date"),
+            ({"items-0-due_time": "25:75"}, "due_time"),
+        ]:
+            with self.subTest(changes=changes):
+                data = self.workflow_payload(
+                    order,
+                    action="complete",
+                    assigned_to=str(self.worker.pk),
+                    payment_status="paid",
+                    notes="Do not save this",
+                )
+                data.update(changes)
+                data["general-0-notes"] = "Do not save this either"
+                response = self.client.post(
+                    reverse("edit_order", args=[order.pk]), data
+                )
+                self.assertEqual(response.status_code, 200)
+                editor = response.context["editor"]
+                self.assertIn(field, editor.items.forms[0].detail_form.errors)
+                self.assertContains(response, "Check the fields below")
+                order.refresh_from_db()
+                self.assertEqual(order.status, "in_progress")
+                self.assertEqual(order.revision, 1)
+                self.assertIsNone(order.assigned_to)
+                self.assertEqual(order.payment_status, "unpaid")
+                self.assertEqual(order.notes, "Call before collection")
+                self.assertEqual(
+                    order.charges.get(item__isnull=True).notes, "Prioritize this job"
+                )
+
+    def test_in_progress_details_save_with_completion_then_lock_until_reopened(self):
+        order = self.create_order(dict(self.payload(), status="in_progress"))
+        data = self.workflow_payload(
+            order,
+            action="complete",
+            assigned_to=str(self.worker.pk),
+            notes="Final work instructions",
+        )
+        data.update(
+            {"items-0-due_date": "2026-12-03", "items-0-notes": "Final item note"}
+        )
+        self.assertEqual(
+            self.client.post(reverse("edit_order", args=[order.pk]), data).status_code,
+            302,
+        )
+        order.refresh_from_db()
+        self.assertEqual(order.status, "complete")
+        self.assertEqual(order.notes, "Final work instructions")
+        data = self.workflow_payload(
+            order, action="reopen", notes="Ignored until reopened"
+        )
+        data["items-0-due_date"] = "2027-01-01"
+        self.assertEqual(
+            self.client.post(reverse("edit_order", args=[order.pk]), data).status_code,
+            302,
+        )
+        order.refresh_from_db()
+        self.assertEqual(order.status, "in_progress")
+        self.assertEqual(order.notes, "Final work instructions")
+        self.assertEqual(order.items.get().due_date, date(2026, 12, 3))
+
+    def test_stale_in_progress_details_cannot_overwrite_newer_edits(self):
+        order = self.create_order(dict(self.payload(), status="in_progress"))
+        stale = self.edit_payload(order)
+        current = self.edit_payload(order)
+        current.update(
+            {
+                "notes": "Latest notes",
+                "items-0-due_date": "2026-12-04",
+                "general-0-notes": "Latest extra note",
+            }
+        )
+        self.assertEqual(
+            self.client.post(
+                reverse("edit_order", args=[order.pk]), current
+            ).status_code,
+            302,
+        )
+        response = self.client.post(reverse("edit_order", args=[order.pk]), stale)
+        self.assertContains(response, "changed while you were editing")
+        order.refresh_from_db()
+        self.assertEqual(order.notes, "Latest notes")
+        self.assertEqual(order.items.get().due_date, date(2026, 12, 4))
+        self.assertEqual(
+            order.charges.get(item__isnull=True).notes, "Latest extra note"
+        )
+        self.assertEqual(order.revision, 2)
+
+    def test_in_progress_detail_posts_cannot_add_or_edit_other_orders_rows(self):
+        order = self.create_order(dict(self.payload(), status="in_progress"))
+        other = self.create_order(dict(self.payload(), status="in_progress"))
+        data = self.workflow_payload(order)
+        data.update(
+            {
+                "items-TOTAL_FORMS": "2",
+                "items-0-id": str(other.items.get().pk),
+                "items-0-notes": "This order only",
+                "items-1-product": str(self.other_product.pk),
+                "items-1-due_date": "2026-12-01",
+                "items-1-notes": "Do not add",
+                "items-0-services-TOTAL_FORMS": "3",
+                "items-0-services-0-id": str(
+                    other.charges.filter(item__isnull=False).first().pk
+                ),
+                "items-0-services-0-notes": "This service only",
+                "items-0-services-2-service": str(self.service.pk),
+                "items-0-services-2-quantity": "10",
+                "general-TOTAL_FORMS": "2",
+                "general-1-service": str(self.global_service.pk),
+                "general-1-quantity": "10",
+            }
+        )
+        self.assertEqual(
+            self.client.post(reverse("edit_order", args=[order.pk]), data).status_code,
+            302,
+        )
+        self.assertEqual(order.items.count(), 1)
+        self.assertEqual(order.charges.count(), 3)
+        self.assertEqual(order.items.get().notes, "This order only")
+        self.assertEqual(
+            order.charges.filter(item__isnull=False).first().notes, "This service only"
+        )
+        self.assertEqual(other.items.get().notes, "Keep the original ribbons")
+        self.assertEqual(
+            other.charges.filter(item__isnull=False).first().notes, "Left side"
+        )
+
+    def test_in_progress_form_unlocks_only_deadlines_and_notes(self):
+        class ControlParser(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.fieldsets = []
+                self.disabled = {}
+
+            def handle_starttag(self, tag, attrs):
+                attrs = dict(attrs)
+                if tag == "fieldset":
+                    self.fieldsets.append("disabled" in attrs)
+                if tag in ("input", "select", "textarea") and "name" in attrs:
+                    self.disabled[attrs["name"]] = "disabled" in attrs or any(
+                        self.fieldsets
+                    )
+
+            def handle_endtag(self, tag):
+                if tag == "fieldset":
+                    self.fieldsets.pop()
+
+        order = self.create_order(dict(self.payload(), status="in_progress"))
+        response = self.client.get(reverse("edit_order", args=[order.pk]))
+        editor = response.context["editor"]
+        self.assertTrue(editor.details_editable)
+        self.assertTrue(editor.form.fields["customer"].disabled)
+        self.assertFalse(editor.form.fields["notes"].disabled)
+        item = editor.items.forms[0]
+        self.assertTrue(item.fields["product"].disabled)
+        for field in ("due_date", "due_time", "notes"):
+            self.assertFalse(item.detail_form.fields[field].disabled)
+        charge = item.services.forms[0]
+        self.assertTrue(charge.fields["service"].disabled)
+        self.assertTrue(charge.fields["quantity"].disabled)
+        self.assertFalse(charge.detail_form.fields["notes"].disabled)
+        self.assertFalse(editor.general.forms[0].detail_form.fields["notes"].disabled)
+        self.assertContains(response, "data-add-item disabled")
+        self.assertContains(response, "data-remove-item disabled")
+        self.assertContains(response, "data-add-charge disabled")
+        self.assertContains(response, "data-remove-charge disabled")
+        # Each editable control is rendered once, outside disabled fieldsets.
+        for name in (
+            "items-0-due_date",
+            "items-0-due_time",
+            "items-0-notes",
+            "items-0-services-0-notes",
+            "general-0-notes",
+        ):
+            self.assertContains(response, f'name="{name}"', count=1)
+        controls = ControlParser()
+        controls.feed(response.content.decode())
+        for name in (
+            "notes",
+            "items-0-due_date",
+            "items-0-due_time",
+            "items-0-notes",
+            "items-0-services-0-notes",
+            "general-0-notes",
+        ):
+            self.assertFalse(controls.disabled[name], name)
+        for name in (
+            "items-0-product",
+            "items-0-services-0-service",
+            "items-0-services-0-quantity",
+            "general-0-service",
+            "general-0-quantity",
+        ):
+            self.assertTrue(controls.disabled[name], name)
+
+    def test_invalid_submit_transition_is_rejected(self):
+        data = dict(self.payload(), action="closed")
+        response = self.client.post(reverse("create_order"), data)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("__all__", response.context["editor"].form.errors)
+        self.assertFalse(ServiceOrder.objects.exists())
+
+    def test_only_the_current_stage_action_buttons_are_displayed(self):
+        expected = {
+            "draft": {"save", "submit", "delete_draft"},
+            "in_progress": {"save", "complete", "cancel", "return_to_draft"},
+            "complete": {"save", "reopen"},
+            "cancelled": {"save", "restore_to_draft"},
+        }
+        for status, actions in expected.items():
+            with self.subTest(status=status):
+                order = self.create_order(
+                    dict(self.payload(), status=status, assigned_to=str(self.worker.pk))
+                )
+                response = self.client.get(reverse("edit_order", args=[order.pk]))
+                html = response.content.decode()
+                self.assertContains(response, "data-order-confirmation", count=1)
+                self.assertContains(
+                    response, 'aria-describedby="order-confirm-message"'
+                )
+                self.assertContains(response, "crm/js/order-confirmation.js")
+                self.assertEqual(
+                    set(re.findall(r'name="action" value="([^"]+)"', html)), actions
+                )
+                for button in re.findall(r'<button[^>]*name="action"[^>]*>', html):
+                    if 'value="save"' in button:
+                        self.assertNotIn("data-confirm", button)
+                    else:
+                        self.assertIn('data-confirm="Are you sure you wish to ', button)
+                self.assertNotContains(response, "order-status-banner")
+                self.assertContains(
+                    response, f"order-status-badge order-state order-state-{status}"
+                )
+                self.assertContains(response, "ZAR 99.40", count=2)
+                self.assertNotContains(response, 'name="status"')
+                self.assertNotContains(response, 'type="radio"')
+
+    def test_actions_from_other_stages_are_rejected_without_changes(self):
+        invalid = {
+            "draft": [
+                "cancel",
+                "complete",
+                "reopen",
+                "return_to_draft",
+                "restore_to_draft",
+            ],
+            "in_progress": ["submit", "reopen", "restore_to_draft"],
+            "complete": [
+                "submit",
+                "complete",
+                "cancel",
+                "return_to_draft",
+                "restore_to_draft",
+            ],
+            "cancelled": ["submit", "complete", "cancel", "reopen", "return_to_draft"],
+        }
+        for status, actions in invalid.items():
+            order = self.create_order(
+                dict(
+                    self.payload(),
+                    status=status,
+                    assigned_to=str(self.worker.pk),
+                    payment_status="paid",
+                    collected="on",
+                )
+            )
+            for action in actions:
+                with self.subTest(status=status, action=action):
+                    data = self.edit_payload(order)
+                    data.update({"action": action, "payment_status": "unpaid"})
+                    data.pop("collected", None)
+                    response = self.client.post(
+                        reverse("edit_order", args=[order.pk]), data
+                    )
+                    self.assertContains(
+                        response,
+                        "This action is not available for the current order status.",
+                    )
+                    order.refresh_from_db()
+                    self.assertEqual(order.status, status)
+                    self.assertEqual(order.revision, 1)
+                    self.assertEqual(
+                        order.payment_status, ServiceOrder.PaymentStatus.PAID
+                    )
+                    self.assertTrue(order.collected)
+                    self.assertEqual(order.total, Decimal("99.40"))
+
+    def test_direct_status_values_cannot_bypass_the_action_buttons(self):
+        for source, target in [
+            ("draft", "in_progress"),
+            ("in_progress", "complete"),
+            ("complete", "draft"),
+            ("cancelled", "in_progress"),
+        ]:
+            order = self.create_order(
+                dict(self.payload(), status=source, assigned_to=str(self.worker.pk))
+            )
+            data = self.edit_payload(order)
+            data.update({"status": target, "action": "save"})
+            response = self.client.post(reverse("edit_order", args=[order.pk]), data)
+            self.assertContains(
+                response, "Use the order action buttons to change the status."
+            )
+            order.refresh_from_db()
+            self.assertEqual(order.status, source)
+            self.assertEqual(order.revision, 1)
+
+    def test_old_transition_parameter_is_rejected(self):
+        order = self.create_order()
+        data = self.edit_payload(order)
+        data["transition"] = "in_progress"
+        response = self.client.post(reverse("edit_order", args=[order.pk]), data)
+        self.assertContains(
+            response, "Use the order action buttons to change the status."
+        )
+        order.refresh_from_db()
+        self.assertEqual(order.status, ServiceOrder.Status.DRAFT)
+        self.assertEqual(order.revision, 1)
+
+    def test_duplicate_submit_does_not_repeat_the_transition(self):
+        order = self.create_order()
+        data = self.edit_payload(order)
+        data["action"] = "submit"
+        self.assertEqual(
+            self.client.post(reverse("edit_order", args=[order.pk]), data).status_code,
+            302,
+        )
+        response = self.client.post(reverse("edit_order", args=[order.pk]), data)
+        self.assertContains(
+            response, "This action is not available for the current order status."
+        )
+        order.refresh_from_db()
+        self.assertEqual(order.status, ServiceOrder.Status.IN_PROGRESS)
+        self.assertEqual(order.revision, 2)
+        self.assertEqual(order.charges.count(), 3)
+
+    def test_workflow_fields_have_stage_specific_ui_locks(self):
+        for status in ServiceOrder.Status.values:
+            order = self.create_order(
+                dict(self.payload(), status=status, assigned_to=str(self.worker.pk))
+            )
+            response = self.client.get(reverse("edit_order", args=[order.pk]))
+            fields = response.context["editor"].form.fields
+            self.assertEqual(
+                fields["assigned_to"].disabled, status in ("draft", "cancelled")
+            )
+            self.assertEqual(
+                fields["payment_status"].disabled, status in ("draft", "cancelled")
+            )
+            self.assertEqual(fields["collected"].disabled, status != "complete")
+            self.assertEqual(fields["notes"].disabled, status == "complete")
+            assign_button = re.search(
+                r"<button[^>]*data-assign-to-me[^>]*>", response.content.decode()
+            ).group()
+            self.assertEqual(
+                " disabled" in assign_button, status in ("draft", "cancelled")
+            )
+
+    def test_draft_workflow_edits_are_ignored_on_save_and_submit(self):
+        for action in ["save", "submit"]:
+            order = self.create_order()
+            data = self.edit_payload(order)
+            data.update(
+                {
+                    "action": action,
+                    "assigned_to": str(self.worker.pk),
+                    "payment_status": "paid",
+                    "collected": "on",
+                    "notes": "Editable draft notes",
+                }
+            )
+            self.assertEqual(
+                self.client.post(
+                    reverse("edit_order", args=[order.pk]), data
+                ).status_code,
+                302,
+            )
+            order.refresh_from_db()
+            self.assertIsNone(order.assigned_to)
+            self.assertEqual(order.payment_status, ServiceOrder.PaymentStatus.UNPAID)
+            self.assertFalse(order.collected)
+            self.assertEqual(order.notes, "Editable draft notes")
+            self.assertEqual(
+                order.status, "draft" if action == "save" else "in_progress"
+            )
+
+    def test_cancelled_order_form_only_allows_order_notes(self):
+        order = self.create_order(dict(self.payload(), status="cancelled"))
+        response = self.client.get(reverse("edit_order", args=[order.pk]))
+        editor = response.context["editor"]
+        for name in (
+            "customer",
+            "customer_mode",
+            "assigned_to",
+            "payment_status",
+            "collected",
+        ):
+            self.assertTrue(editor.form.fields[name].disabled, name)
+        self.assertFalse(editor.form.fields["notes"].disabled)
+        self.assertFalse(editor.details_editable)
+        for item_form in editor.items:
+            self.assertTrue(all(field.disabled for field in item_form.fields.values()))
+            for charge_form in item_form.services:
+                self.assertTrue(
+                    all(field.disabled for field in charge_form.fields.values())
+                )
+        for charge_form in editor.general:
+            self.assertTrue(
+                all(field.disabled for field in charge_form.fields.values())
+            )
+        self.assertContains(response, "Save notes", count=2)
+        self.assertContains(response, "Only Order Notes can be updated.")
+        self.assertContains(
+            response, "Add a cancellation reason or other internal notes."
+        )
+        self.assertContains(response, 'name="action" value="restore_to_draft"', count=2)
+
+    def test_cancelled_notes_save_and_restore_ignore_all_other_field_changes(self):
+        for action in ("save", "restore_to_draft"):
+            with self.subTest(action=action):
+                order = self.create_order(
+                    dict(
+                        self.payload(),
+                        status="cancelled",
+                        assigned_to=str(self.worker.pk),
+                        payment_status="paid",
+                        collected="on",
+                    )
+                )
+                original_item = dict(order.items.values().get())
+                original_charges = list(order.charges.values())
+                data = self.edit_payload(order)
+                data.update(
+                    {
+                        "action": action,
+                        "notes": "Cancelled at the customer's request",
+                        "customer_mode": "new",
+                        "customer": "999999",
+                        "customer-first_name": "Do not create",
+                        "assigned_to": str(self.user.pk),
+                        "payment_status": "unpaid",
+                        "items-0-product": str(self.other_product.pk),
+                        "items-0-due_date": "2027-01-01",
+                        "items-0-due_time": "15:45",
+                        "items-0-notes": "Do not change item notes",
+                        "items-0-DELETE": "on",
+                        "items-0-services-0-service": str(self.other_service.pk),
+                        "items-0-services-0-quantity": "999",
+                        "items-0-services-0-unit_price": "0.01",
+                        "items-0-services-0-notes": "Do not change service notes",
+                        "general-0-notes": "Do not change extra notes",
+                        "general-0-DELETE": "on",
+                        "items-TOTAL_FORMS": "0",
+                    }
+                )
+                data.pop("collected")
+                response = self.client.post(
+                    reverse("edit_order", args=[order.pk]), data
+                )
+                self.assertEqual(response.status_code, 302)
+                order.refresh_from_db()
+                self.assertEqual(order.notes, "Cancelled at the customer's request")
+                self.assertEqual(
+                    order.status, "cancelled" if action == "save" else "draft"
+                )
+                self.assertEqual(order.assigned_to, self.worker)
+                self.assertEqual(order.payment_status, "paid")
+                self.assertTrue(order.collected)
+                self.assertEqual(order.customer, self.customer)
+                self.assertFalse(
+                    Customer.objects.filter(first_name="Do not create").exists()
+                )
+                self.assertEqual(dict(order.items.values().get()), original_item)
+                self.assertEqual(list(order.charges.values()), original_charges)
+                self.assertEqual(order.total, Decimal("99.40"))
+
+    def test_cancelled_order_preserves_omitted_notes_and_allows_clearing(self):
+        order = self.create_order(dict(self.payload(), status="cancelled"))
+        for changes, expected in [({}, "Call before collection"), ({"notes": ""}, "")]:
+            data = self.workflow_payload(order, **changes)
+            self.assertEqual(
+                self.client.post(
+                    reverse("edit_order", args=[order.pk]), data
+                ).status_code,
+                302,
+            )
+            order.refresh_from_db()
+            self.assertEqual(order.notes, expected)
+            self.assertEqual(order.status, "cancelled")
+
+    def test_stale_cancelled_order_notes_cannot_overwrite_a_newer_reason(self):
+        order = self.create_order(dict(self.payload(), status="cancelled"))
+        stale = self.workflow_payload(order, notes="Outdated reason")
+        current = self.workflow_payload(order, notes="Latest cancellation reason")
+        self.assertEqual(
+            self.client.post(
+                reverse("edit_order", args=[order.pk]), current
+            ).status_code,
+            302,
+        )
+        response = self.client.post(reverse("edit_order", args=[order.pk]), stale)
+        self.assertContains(response, "changed while you were editing")
+        order.refresh_from_db()
+        self.assertEqual(order.notes, "Latest cancellation reason")
+        self.assertEqual(order.revision, 2)
+        self.assertEqual(order.status, "cancelled")
+
+    def test_collection_changes_outside_complete_are_ignored(self):
+        for status in ["draft", "in_progress", "cancelled"]:
+            for collected in [False, True]:
+                order = self.create_order(
+                    dict(
+                        self.payload(),
+                        status=status,
+                        collected="on" if collected else "",
+                    )
+                )
+                data = self.edit_payload(order)
+                if collected:
+                    data.pop("collected", None)
+                else:
+                    data["collected"] = "on"
+                self.assertEqual(
+                    self.client.post(
+                        reverse("edit_order", args=[order.pk]), data
+                    ).status_code,
+                    302,
+                )
+                order.refresh_from_db()
+                self.assertEqual(order.collected, collected)
+
+    def test_submit_assign_complete_then_collect(self):
+        order = self.create_order()
+        data = self.edit_payload(order)
+        data.update(
+            {
+                "action": "submit",
+                "assigned_to": str(self.user.pk),
+                "payment_status": "paid",
+                "collected": "on",
+            }
+        )
+        self.assertEqual(
+            self.client.post(reverse("edit_order", args=[order.pk]), data).status_code,
+            302,
+        )
+        order.refresh_from_db()
+        self.assertIsNone(order.assigned_to)
+        self.assertFalse(order.collected)
+        data = self.workflow_payload(
+            order, assigned_to=str(self.user.pk), payment_status="paid", collected="on"
+        )
+        self.assertEqual(
+            self.client.post(reverse("edit_order", args=[order.pk]), data).status_code,
+            302,
+        )
+        order.refresh_from_db()
+        self.assertEqual(order.assigned_to, self.user)
+        self.assertEqual(order.payment_status, "paid")
+        self.assertFalse(order.collected)
+        data = self.workflow_payload(order, action="complete", collected="on")
+        self.assertEqual(
+            self.client.post(reverse("edit_order", args=[order.pk]), data).status_code,
+            302,
+        )
+        order.refresh_from_db()
+        self.assertEqual(order.status, "complete")
+        self.assertFalse(order.collected)
+        data = self.workflow_payload(order, collected="on")
+        self.assertEqual(
+            self.client.post(reverse("edit_order", args=[order.pk]), data).status_code,
+            302,
+        )
+        order.refresh_from_db()
+        self.assertTrue(order.collected)
+        self.assertEqual(order.total, Decimal("99.40"))
+
+    def test_invalid_payment_status_is_rejected_after_submission(self):
+        order = self.create_order(dict(self.payload(), status="in_progress"))
+        response = self.client.post(
+            reverse("edit_order", args=[order.pk]),
+            self.workflow_payload(order, payment_status="partial"),
+        )
+        self.assertIn("payment_status", response.context["editor"].form.errors)
+        order.refresh_from_db()
+        self.assertEqual(order.payment_status, "unpaid")
+        self.assertEqual(order.revision, 1)
+
+    def test_delete_draft_removes_only_order_items_and_charges(self):
+        order = self.create_order()
+        other = self.create_order()
+        item_id = order.items.get().pk
+        charge_ids = list(order.charges.values_list("pk", flat=True))
+        response = self.client.post(
+            reverse("delete_order", args=[order.pk]), {"revision": order.revision}
+        )
+        self.assertRedirects(response, reverse("orders"))
+        self.assertFalse(ServiceOrder.objects.filter(pk=order.pk).exists())
+        self.assertFalse(OrderItem.objects.filter(pk=item_id).exists())
+        self.assertFalse(OrderServiceCharge.objects.filter(pk__in=charge_ids).exists())
+        self.assertTrue(ServiceOrder.objects.filter(pk=other.pk).exists())
+        self.assertTrue(Customer.objects.filter(pk=self.customer.pk).exists())
+        self.assertTrue(Product.objects.filter(pk=self.product.pk).exists())
+        self.assertTrue(Service.objects.filter(pk=self.service.pk).exists())
+
+    def test_non_draft_orders_cannot_be_deleted(self):
+        for status in ["in_progress", "complete", "cancelled"]:
+            order = self.create_order(
+                dict(self.payload(), status=status, assigned_to=str(self.worker.pk))
+            )
+            response = self.client.post(
+                reverse("delete_order", args=[order.pk]), {"revision": order.revision}
+            )
+            self.assertEqual(response.status_code, 403)
+            order.refresh_from_db()
+            self.assertEqual(order.status, status)
+            self.assertEqual(order.revision, 1)
+            self.assertEqual(order.charges.count(), 3)
+
+    def test_deleting_drafts_requires_delete_permission(self):
+        order = self.create_order()
+        editor = get_user_model().objects.create_user(username="editor_without_delete")
+        editor.user_permissions.add(
+            Permission.objects.get(codename="change_serviceorder")
+        )
+        self.client.force_login(editor)
+        response = self.client.post(
+            reverse("delete_order", args=[order.pk]), {"revision": order.revision}
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(ServiceOrder.objects.filter(pk=order.pk).exists())
+
+    def test_draft_deletion_requires_post_and_a_valid_revision(self):
+        order = self.create_order()
+        url = reverse("delete_order", args=[order.pk])
+        self.assertEqual(self.client.get(url).status_code, 405)
+        for data in [{}, {"revision": "invalid"}, {"revision": "0"}]:
+            self.assertEqual(self.client.post(url, data).status_code, 400)
+            self.assertTrue(ServiceOrder.objects.filter(pk=order.pk).exists())
+
+    def test_stale_draft_deletion_preserves_newer_changes(self):
+        order = self.create_order()
+        stale = self.edit_payload(order)
+        current = self.edit_payload(order)
+        current["notes"] = "Newer notes"
+        self.assertEqual(
+            self.client.post(
+                reverse("edit_order", args=[order.pk]), current
+            ).status_code,
+            302,
+        )
+        response = self.client.post(reverse("edit_order", args=[order.pk]), stale)
+        delete_form = re.search(
+            r'<form id="delete-draft-form".*?</form>', response.content.decode(), re.S
+        ).group()
+        self.assertIn('name="revision" value="1"', delete_form)
+        response = self.client.post(
+            reverse("delete_order", args=[order.pk]), {"revision": 1}, follow=True
+        )
+        self.assertContains(response, "The draft changed. Review it before deleting.")
+        order.refresh_from_db()
+        self.assertEqual(order.notes, "Newer notes")
+        self.assertEqual(order.revision, 2)
+
+    def test_stale_delete_cannot_remove_a_submitted_order(self):
+        order = self.create_order()
+        data = self.edit_payload(order)
+        data["action"] = "submit"
+        self.assertEqual(
+            self.client.post(reverse("edit_order", args=[order.pk]), data).status_code,
+            302,
+        )
+        response = self.client.post(
+            reverse("delete_order", args=[order.pk]), {"revision": 1}
+        )
+        self.assertEqual(response.status_code, 403)
+        order.refresh_from_db()
+        self.assertEqual(order.status, "in_progress")
+        self.assertEqual(order.revision, 2)
+
+    def test_delete_draft_requires_csrf_token(self):
+        order = self.create_order()
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.user)
+        client.get(reverse("edit_order", args=[order.pk]))
+        url = reverse("delete_order", args=[order.pk])
+        self.assertEqual(
+            client.post(url, {"revision": order.revision}).status_code, 403
+        )
+        self.assertTrue(ServiceOrder.objects.filter(pk=order.pk).exists())
+        response = client.post(
+            url,
+            {
+                "revision": order.revision,
+                "csrfmiddlewaretoken": client.cookies["csrftoken"].value,
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(ServiceOrder.objects.filter(pk=order.pk).exists())
+
+    def test_new_drafts_show_discard_and_saved_drafts_show_delete(self):
+        response = self.client.get(reverse("create_order"))
+        self.assertContains(response, "Discard", count=2)
+        self.assertContains(
+            response,
+            'data-confirm="Are you sure you wish to discard this unsaved order?"',
+            count=2,
+        )
+        self.assertNotContains(response, "Delete draft")
+        self.assertNotContains(response, 'name="action" value="cancel"')
+        order = self.create_order()
+        response = self.client.get(reverse("edit_order", args=[order.pk]))
+        self.assertContains(response, "Delete draft", count=2)
+        self.assertContains(response, 'form="delete-draft-form"', count=2)
+        self.assertNotContains(response, 'name="action" value="cancel"')
+        order.status = "in_progress"
+        order.save(update_fields=["status"])
+        response = self.client.get(reverse("edit_order", args=[order.pk]))
+        self.assertNotContains(response, "Delete draft")
+        self.assertContains(response, 'name="action" value="cancel"', count=2)
+
+    def test_save_without_a_transition_preserves_each_current_status(self):
+        for status in ServiceOrder.Status.values:
+            order = self.create_order(
+                dict(self.payload(), status=status, assigned_to=str(self.worker.pk))
+            )
+            for action in [None, "save"]:
+                data = self.edit_payload(order)
+                data["payment_status"] = "paid"
+                if action:
+                    data["action"] = action
+                self.assertEqual(
+                    self.client.post(
+                        reverse("edit_order", args=[order.pk]), data
+                    ).status_code,
+                    302,
+                )
+                order.refresh_from_db()
+                self.assertEqual(order.status, status)
+                self.assertEqual(
+                    order.payment_status,
+                    (
+                        ServiceOrder.PaymentStatus.UNPAID
+                        if status
+                        in (ServiceOrder.Status.DRAFT, ServiceOrder.Status.CANCELLED)
+                        else ServiceOrder.PaymentStatus.PAID
+                    ),
+                )

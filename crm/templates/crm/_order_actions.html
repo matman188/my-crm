@@ -1,0 +1,11 @@
+<div class="button-row order-save-actions" role="group" aria-label="{{ action_group_label|default:'Order actions' }}">
+    <button class="button secondary" type="submit" name="action" value="save" form="order-editor">{{ editor.save_label }}</button>
+    {% for action in editor.actions %}<button class="button {{ action.style }}" type="submit" name="action" value="{{ action.name }}" form="order-editor" data-confirm="{{ action.confirmation }}">{{ action.label }}</button>{% endfor %}
+    {% if editor.original_status == 'draft' %}
+        {% if order.pk %}
+            {% if perms.crm.delete_serviceorder %}<button class="button danger" type="submit" name="action" value="delete_draft" form="delete-draft-form" data-delete-draft data-confirm="Are you sure you wish to delete this draft and its items? This cannot be undone.">Delete draft</button>{% endif %}
+        {% else %}
+            <a class="button-link order-discard-link" href="{% url 'orders' %}" data-confirm="Are you sure you wish to discard this unsaved order?">Discard</a>
+        {% endif %}
+    {% endif %}
+</div>

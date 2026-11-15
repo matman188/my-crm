@@ -741,6 +741,99 @@ body {
     display: none !important;
 }
 
+.order-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 14px 32px;
+    margin: 16px 0 0;
+}
+
+.order-summary dt {
+    color: var(--muted);
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.order-summary dd {
+    margin: 0;
+}
+
+.order-summary .order-status-badge {
+    padding: 8px 14px;
+    border: 1px solid currentColor;
+    font-size: 0.95rem;
+}
+
+.order-header-total {
+    padding: 7px 0;
+    font-size: 1.2rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.order-status-help {
+    margin: 0;
+    font-size: 0.9rem;
+}
+
+.order-fieldset {
+    min-width: 0;
+    padding: 0;
+    margin: 0;
+    border: 0;
+}
+
+.order-fieldset.panel {
+    padding: 24px;
+    border: 1px solid var(--border);
+}
+
+.order-editor input:disabled,
+.order-editor select:disabled,
+.order-editor textarea:disabled {
+    background: #eef3f6;
+    color: #4e5f6f;
+    cursor: default;
+}
+
+.order-editor button:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.order-save-actions {
+    margin-top: 0;
+}
+
+.order-discard-link {
+    background: #e7f0f5;
+    color: var(--panel);
+    border-color: var(--border);
+}
+
+.order-form-toolbar {
+    flex-wrap: wrap;
+}
+
+.order-header-controls {
+    display: flex;
+    flex: 1 1 300px;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 12px;
+}
+
+.order-header-controls .order-save-actions {
+    justify-content: flex-end;
+}
+
+.order-back-link {
+    color: var(--panel-accent);
+    font-size: 0.92rem;
+}
+
 .order-items,
 .order-service-rows {
     display: grid;
@@ -844,7 +937,8 @@ body {
     background: #e7f0f5;
 }
 
-.customer-dialog {
+.customer-dialog,
+.order-confirm-dialog {
     width: min(640px, calc(100% - 32px));
     max-height: calc(100vh - 40px);
     padding: 24px;
@@ -856,22 +950,131 @@ body {
     box-shadow: var(--shadow);
 }
 
-.customer-dialog::backdrop {
+.customer-dialog::backdrop,
+.order-confirm-dialog::backdrop {
     background: rgba(16, 37, 56, 0.45);
 }
 
-.customer-dialog h2 {
+.customer-dialog h2,
+.order-confirm-dialog h2 {
     margin-top: 0;
 }
 
-.customer-dialog-actions {
+.customer-dialog-actions,
+.order-confirm-actions {
     justify-content: flex-end;
     margin-top: 20px;
+}
+
+.order-confirm-dialog {
+    width: min(460px, calc(100% - 32px));
+}
+
+.order-confirm-dialog p {
+    color: var(--muted);
+    line-height: 1.6;
+    margin-bottom: 0;
 }
 
 .order-item-total {
     text-align: right;
     margin-bottom: 0;
+}
+
+.order-collected-field {
+    align-self: center;
+}
+
+.order-assignment-control {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 10px;
+}
+
+.order-assignment-control select {
+    flex: 1 1 160px;
+    min-width: 0;
+}
+
+.order-assignment-control .button {
+    flex: 0 0 auto;
+    margin-top: 6px;
+    white-space: nowrap;
+}
+
+.order-collected-field label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+}
+
+.order-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 12px;
+}
+
+.order-filter-search {
+    flex: 1 1 260px;
+}
+
+.order-filters label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+.order-filters input,
+.order-filters select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: #fff;
+    color: var(--text);
+    font: inherit;
+}
+
+.order-filters .errorlist {
+    padding-left: 18px;
+    color: var(--danger);
+}
+
+.order-state,
+.order-payment-paid,
+.order-payment-unpaid,
+.order-payment-refunded {
+    white-space: nowrap;
+}
+
+.order-state-complete,
+.order-payment-paid {
+    background: #edf7ed;
+    color: #1f5130;
+}
+
+.order-state-draft {
+    background: #eef2f7;
+    color: #4e5f6f;
+}
+
+.order-state-cancelled {
+    background: #fdecec;
+    color: #7a1f1f;
+}
+
+.order-payment-unpaid {
+    background: #fcefd8;
+    color: #805500;
+}
+
+.order-payment-refunded {
+    background: #f1ecfa;
+    color: #62428a;
 }
 
 .order-save-bar {
@@ -922,6 +1125,15 @@ body {
 
     .toolbar {
         flex-direction: column;
+    }
+
+    .order-header-controls {
+        flex-basis: auto;
+        align-items: flex-start;
+    }
+
+    .order-header-controls .order-save-actions {
+        justify-content: flex-start;
     }
 
     .search-toolbar {
