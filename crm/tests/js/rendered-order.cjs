@@ -19,7 +19,7 @@ async function boot(html, url) {
     w.HTMLFormElement.prototype.requestSubmit = function (submitter) {
         if (this.checkValidity()) this.dispatchEvent(new w.SubmitEvent("submit", { bubbles: true, cancelable: true, submitter }));
     };
-    for (const name of ["workspace", "order-customer", "order-confirmation", "order-form"]) w.eval(fs.readFileSync(path.join(directory, name + ".js"), "utf8"));
+    for (const name of ["workspace", "list-filters", "order-customer", "order-confirmation", "order-form"]) w.eval(fs.readFileSync(path.join(directory, name + ".js"), "utf8"));
     w.document.dispatchEvent(new w.Event("DOMContentLoaded"));
     const editor = w.document.querySelector("[data-order-editor]");
     return { w, editor, q: selector => w.document.querySelector(selector), change(control, value) { control.value = value; control.dispatchEvent(new w.Event("change", { bubbles: true })); } };

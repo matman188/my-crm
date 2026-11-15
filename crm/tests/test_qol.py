@@ -238,6 +238,29 @@ class QualityOfLifeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.context["filter_form"].errors)
 
+    def test_order_filters_use_search_and_no_redundant_unpaid_shortcut(self):
+        self.make_order(status="in_progress", payment_status="unpaid")
+        self.make_order(status="in_progress", payment_status="paid")
+        response = self.client.get(reverse("orders"), {"payment_status": "unpaid"})
+        self.assertEqual(response.context["page_obj"].paginator.count, 1)
+        self.assertNotIn(
+            "Unpaid", [view["label"] for view in response.context["quick_views"]]
+        )
+        self.assertIn(
+            "Open Orders", [view["label"] for view in response.context["quick_views"]]
+        )
+        self.assertContains(response, "data-list-filters")
+        self.assertContains(response, 'type="submit">Search</button>')
+        self.assertNotContains(response, 'type="submit">Filter</button>')
+        self.assertEqual(
+            response.context["filter_form"]["payment_status"].value(), "unpaid"
+        )
+        legacy = self.client.get(reverse("orders"), {"view": "unpaid"})
+        self.assertEqual(
+            legacy.context["filter_form"]["payment_status"].value(), "unpaid"
+        )
+        self.assertEqual(legacy.context["page_obj"].paginator.count, 1)
+
     def test_archived_catalogue_is_excluded_from_new_order_but_existing_prices_survive(
         self,
     ):

@@ -1,0 +1,29 @@
+<form method="get" class="list-filters" data-list-filters>
+    <div class="list-search-row">
+        <div class="form-field list-search-field">
+            <label for="list-search">Search</label>
+            <input id="list-search" type="search" name="q" value="{{ search_query }}" placeholder="{{ search_placeholder }}">
+        </div>
+        <button class="button" type="submit">Search</button>
+        {% if search_query %}<a class="button-link" href="{% url list_url %}{% if customer_status %}?status={{ customer_status }}{% elif catalog_status %}?status={{ catalog_status }}{% endif %}">Clear</a>{% endif %}
+    </div>
+    {% if customer_status %}
+    <div class="list-filter-controls"><div class="form-field">
+        <label for="customer-status-filter">Customer status</label>
+        <select id="customer-status-filter" name="status">
+            <option value="active"{% if customer_status == 'active' %} selected{% endif %}>Active customers</option>
+            <option value="archived"{% if customer_status == 'archived' %} selected{% endif %}>Archived customers</option>
+            <option value="all"{% if customer_status == 'all' %} selected{% endif %}>All customers</option>
+        </select>
+    </div></div>
+    {% elif catalog_status %}
+    <div class="list-filter-controls"><div class="form-field">
+        <label for="catalog-status-filter">Status</label>
+        <select id="catalog-status-filter" name="status">
+            <option value="active"{% if catalog_status == 'active' %} selected{% endif %}>Active</option>
+            <option value="archived"{% if catalog_status == 'archived' %} selected{% endif %}>Archived</option>
+            <option value="all"{% if catalog_status == 'all' %} selected{% endif %}>All</option>
+        </select>
+    </div></div>
+    {% endif %}
+</form>

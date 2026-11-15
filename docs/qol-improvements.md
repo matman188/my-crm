@@ -23,15 +23,26 @@ scroll position. Unsaved form data is not stored in the browser. Refresh/closing
 the tab uses the browser's own unsaved-change prompt; normal links use the app's
 modal. Save itself does not require confirmation.
 
-Orders has All orders, Open Orders, My Orders, Unassigned, Due Today, Overdue, Unpaid and
+Orders has All orders, Open Orders, My Orders, Unassigned, Due Today, Overdue and
 Awaiting Collection views. Counts respect the customer/search scope. Changing
 queues resets stage/payment/collection filters; further filtering works within
 the selected queue. Open Orders includes Draft and In Progress, independently of
 assignment, payment or collection. It also has a matching dashboard count.
 My Orders includes all stages assigned to the signed-in user.
-Unassigned includes Draft and In Progress. Unpaid includes In Progress and Complete
-with Unpaid payment status. Awaiting Collection means Complete and not collected,
-independently of payment. Raw stage/payment filters can still find other records.
+Unassigned includes Draft and In Progress. The redundant Unpaid shortcut is removed
+from Orders; use the Payment status dropdown. The existing Unpaid dashboard/legacy
+view still means In Progress or Complete with Unpaid payment status, and displays
+Unpaid in the dropdown; choosing another payment filter exits that legacy queue.
+Awaiting Collection means Complete and not collected, independently of payment.
+Raw stage/payment filters can still find other records.
+
+List filters now share a search row with a Search button alongside the text field,
+and a separate row of labelled dropdowns. Dropdown changes apply immediately;
+typing or leaving the text field alone does not submit. Search/Enter applies text,
+and changing a dropdown applies the form's current search and filter values.
+Keep selected queue/customer scope and restart pagination when applying controls.
+This behaviour applies to Orders and the customer/catalogue directories; Users
+and Product Categories retain manual text search using the same layout.
 
 Due Today/Overdue count only Draft and In Progress. An optional time makes today's
 item overdue once that time passes. A date without a time becomes overdue the

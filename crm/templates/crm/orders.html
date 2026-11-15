@@ -14,16 +14,21 @@
 <nav class="quick-views" aria-label="Order work queues">
     {% for view in quick_views %}<a class="quick-view{% if view.active %} is-active{% endif %}" href="{{ view.url }}"{% if view.active %} aria-current="page"{% endif %}>{{ view.label }} <span>{{ view.count }}</span></a>{% endfor %}
 </nav>
-<form method="get" class="order-filters">
+<form method="get" class="order-filters list-filters" data-list-filters>
     {% for field in filter_form.hidden_fields %}{{ field }}{{ field.errors }}{% endfor %}
-    {% for field in filter_form.visible_fields %}
-        <div class="form-field{% if field.name == 'q' %} order-filter-search{% endif %}">
+    <div class="list-search-row">
+        <div class="form-field list-search-field"><label for="{{ filter_form.q.id_for_label }}">Search</label>{{ filter_form.q }}{{ filter_form.q.errors }}</div>
+        <button class="button" type="submit">Search</button>
+        {% if has_filters %}<a class="button-link" href="{% url 'orders' %}">Clear</a>{% endif %}
+    </div>
+    <div class="list-filter-controls">
+    {% for field in filter_form.visible_fields %}{% if field.name != 'q' %}
+        <div class="form-field">
             <label for="{{ field.id_for_label }}">{{ field.label }}</label>
             {{ field }}{{ field.errors }}
         </div>
-    {% endfor %}
-    <button class="button" type="submit">Filter</button>
-    {% if has_filters %}<a class="button-link" href="{% url 'orders' %}">Clear</a>{% endif %}
+    {% endif %}{% endfor %}
+    </div>
 </form>
 <div class="data-table-shell order-table">
     <table class="data-table">

@@ -14,21 +14,7 @@
         <a class="button-link" href="{% url 'create_service' %}">Create service</a>
     </div>
 
-    <div class="search-toolbar">
-        <form method="get" class="search-form">
-            <input
-                class="search-input"
-                type="search"
-                name="q"
-                value="{{ search_query }}"
-                placeholder="Search by service name, description, or product"
-            >
-            <select name="status" aria-label="Catalogue status"><option value="active"{% if catalog_status == 'active' %} selected{% endif %}>Active</option><option value="archived"{% if catalog_status == 'archived' %} selected{% endif %}>Archived</option><option value="all"{% if catalog_status == 'all' %} selected{% endif %}>All</option></select><button class="button" type="submit">Search</button>
-            {% if search_query %}
-                <a class="button-link" href="{% url 'services' %}">Clear</a>
-            {% endif %}
-        </form>
-    </div>
+    {% include 'crm/_directory_search.html' with list_url='services' search_placeholder='Search by service name, description, or product' %}
 
     <div class="data-table-shell">
         {% if existing_services %}

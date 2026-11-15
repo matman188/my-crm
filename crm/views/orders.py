@@ -50,7 +50,10 @@ def _customer_entry(customer, order_id=None):
 @login_required
 @permission_required("crm.view_serviceorder", raise_exception=True)
 def orders(request):
-    filters = OrderFilterForm(request.GET)
+    filter_data = request.GET.copy()
+    if filter_data.get("view") == "unpaid" and not filter_data.get("payment_status"):
+        filter_data["payment_status"] = "unpaid"
+    filters = OrderFilterForm(filter_data)
     valid_filters = filters.is_valid()
     query = filters.cleaned_data.get("q", "")
     queryset = with_deadlines(
@@ -119,6 +122,8 @@ def orders(request):
     )
     quick_views = []
     for key, label in WORK_VIEWS:
+        if key == "unpaid":
+            continue
         params = request.GET.copy()
         for field in ("page", "status", "collected", "payment_status"):
             params.pop(field, None)

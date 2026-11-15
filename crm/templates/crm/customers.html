@@ -15,27 +15,7 @@
         <a class="button-link" href="{% url 'create_customer' %}">Create customer</a>
     </div>
 
-    <div class="search-toolbar">
-        <form method="get" class="search-form">
-            <input
-                class="search-input"
-                type="search"
-                name="q"
-                value="{{ search_query }}"
-                placeholder="Search by name, company, email, or phone"
-            >
-            <label class="visually-hidden" for="customer-status-filter">Customer status</label>
-            <select id="customer-status-filter" class="search-input customer-status-filter" name="status">
-                <option value="active"{% if customer_status == 'active' %} selected{% endif %}>Active customers</option>
-                <option value="archived"{% if customer_status == 'archived' %} selected{% endif %}>Archived customers</option>
-                <option value="all"{% if customer_status == 'all' %} selected{% endif %}>All customers</option>
-            </select>
-            <button class="button" type="submit">Search</button>
-            {% if search_query %}
-                <a class="button-link" href="{% url 'customers' %}?status={{ customer_status }}">Clear</a>
-            {% endif %}
-        </form>
-    </div>
+    {% include 'crm/_directory_search.html' with list_url='customers' search_placeholder='Search by name, company, email, or phone' %}
 
     <div class="data-table-shell">
         {% if existing_customers %}

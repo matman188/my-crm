@@ -1105,6 +1105,18 @@ body {
     gap: 12px;
 }
 
+.list-filters { display: grid; gap: 16px; width: 100%; margin-bottom: 20px; }
+.list-search-row { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px; }
+.list-search-field { flex: 1 1 260px; min-width: 0; }
+.list-filter-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.list-filter-controls > .form-field { flex: 1 1 160px; max-width: 260px; min-width: 0; }
+.list-filters label { display: block; margin-bottom: 6px; font-size: .9rem; font-weight: 700; }
+.list-filters input, .list-filters select { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: #fff; color: var(--text); font: inherit; }
+@media (max-width: 600px) {
+    .list-search-field { flex-basis: 100%; }
+    .list-filter-controls > .form-field { max-width: none; flex-basis: calc(50% - 12px); }
+}
+
 .order-filter-search {
     flex: 1 1 260px;
 }

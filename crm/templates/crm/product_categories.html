@@ -14,21 +14,7 @@
         <a class="button-link" href="{% url 'create_product_category' %}">Create category</a>
     </div>
 
-    <div class="search-toolbar">
-        <form method="get" class="search-form">
-            <input
-                class="search-input"
-                type="search"
-                name="q"
-                value="{{ search_query }}"
-                placeholder="Search by category name or description"
-            >
-            <button class="button" type="submit">Search</button>
-            {% if search_query %}
-                <a class="button-link" href="{% url 'product_categories' %}">Clear</a>
-            {% endif %}
-        </form>
-    </div>
+    {% include 'crm/_directory_search.html' with list_url='product_categories' search_placeholder='Search by category name or description' %}
 
     <div class="data-table-shell">
         {% if existing_categories %}
