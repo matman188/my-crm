@@ -29,9 +29,10 @@
 <noscript>
     <p class="non-field-errors">Enable JavaScript to use this form.</p>
 </noscript>
-<form method="post" id="order-editor" class="form-grid order-editor" data-order-editor
+<form method="post" action="{% if order.pk %}{% url 'edit_order' order.pk %}{% else %}{% url 'create_order' %}{% endif %}" id="order-editor" class="form-grid order-editor" data-order-editor
     data-currency="{{ order.currency }}" data-order-locked="{{ editor.locked|yesno:'true,false' }}">
     {% csrf_token %}
+    {% if return_to %}<input type="hidden" name="next" value="{{ return_to }}">{% endif %}
     {{ editor.form.revision }}
     {{ editor.form.revision.errors }}
     {{ editor.form.customer_mode }}
@@ -40,7 +41,7 @@
     <div class="removal-feedback" data-removal-feedback hidden><span data-removal-message></span> <button class="button secondary" type="button" data-undo-removal>Undo removal</button></div>
     {% if editor.form.non_field_errors %}<div class="non-field-errors" role="alert">{{ editor.form.non_field_errors }}
     </div>{% endif %}
-    {% if editor.form.errors or editor.items.errors or editor.general.errors or editor.detail_errors %}
+    {% if editor.form.errors or editor.items.errors or editor.general.errors or editor.detail_errors or complaint_form.errors %}
     <p class="non-field-errors" role="alert">Check the fields below, then save again.</p>
     {% endif %}
     <p class="meta order-status-help">{% if order.status == 'draft' %}Save your changes or submit the order to start work.{% elif order.status == 'in_progress' %}Deadlines and internal notes can be updated. Products and services are locked. Assign a user before marking the order Complete.{% elif order.status == 'complete' %}Work is complete. Order Notes, collection and payment can still be updated.{% else %}This order is cancelled. Only Order Notes can be updated. Restore to Draft to edit the order again.{% endif %}</p>
@@ -59,6 +60,7 @@
             <div class="form-field">
                 <label for="{{ editor.form.payment_status.id_for_label }}">Payment status</label>
                 {{ editor.form.payment_status }}{{ editor.form.payment_status.errors }}
+                {% if order.refund_amount_received != None %}<span class="helptext">Payment status reflects the refund history.</span>{% endif %}
             </div>
             <div class="form-field order-collected-field">
                 <label for="{{ editor.form.collected.id_for_label }}">{{ editor.form.collected }} Collected</label>
@@ -70,6 +72,7 @@
                 {% if editor.form.notes.help_text %}<span class="helptext">{{ editor.form.notes.help_text }}</span>{% endif %}
             </div>
         </div>
+        {% if order.pk %}{% include 'crm/_order_adjustments.html' %}{% endif %}
     </section>
     <fieldset class="panel customer-section order-fieldset" {% if editor.locked %} disabled{% endif %}>
         <div class="order-row-footer">
@@ -133,7 +136,14 @@
         </div>
     </dialog>
 </form>
-{% if order.pk and editor.original_status == 'draft' and not editor.invoices and perms.crm.delete_serviceorder %}
+{% if refund_form %}
+<form method="post" action="{% if editing_refund %}{% url 'edit_order_refund_amount' order.pk editing_refund.pk %}{% else %}{% url 'record_order_refund' order.pk %}{% endif %}" id="order-refund-form" data-order-refund>
+    {% csrf_token %}
+    {% if return_to %}<input type="hidden" name="next" value="{{ return_to }}">{% endif %}
+    {{ refund_form.revision }}
+</form>
+{% endif %}
+{% if order.pk and editor.original_status == 'draft' and not editor.invoices and not has_adjustment_history and perms.crm.delete_serviceorder %}
 <form id="delete-draft-form" method="post" action="{% url 'delete_order' order.pk %}" hidden>
     {% csrf_token %}
     <input type="hidden" name="revision" value="{{ editor.form.revision.value }}">

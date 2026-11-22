@@ -3,7 +3,15 @@ from django.contrib.auth.decorators import login_required, permission_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
-from django.db.models import Exists, F, OuterRef, Prefetch, Q, Value
+from django.db.models import (
+    Exists,
+    F,
+    OuterRef,
+    Prefetch,
+    Q,
+    Value,
+    prefetch_related_objects,
+)
 from django.db.models.functions import Concat
 from django.forms import IntegerField
 from django.http import HttpResponseBadRequest, HttpResponseForbidden, JsonResponse
@@ -13,6 +21,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from crm.forms.customers import CustomerForm
+from crm.forms.order_adjustments import OrderComplaintForm, OrderRefundForm
 from crm.forms.orders import (
     AssignedToChoiceField,
     CustomerChoiceField,
@@ -26,7 +35,10 @@ from crm.forms.orders import (
 from crm.models import (
     Customer,
     Invoice,
+    OrderComplaint,
     OrderItem,
+    OrderRefund,
+    OrderRefundAmountChange,
     OrderServiceCharge,
     Service,
     ServiceOrder,
@@ -39,7 +51,11 @@ from crm.order_queries import (
     work_condition,
     work_counts,
 )
-from crm.order_workflow import ASSIGNMENT_AND_PAYMENT_STAGES, WORKFLOW_FIELD_STAGES
+from crm.order_workflow import (
+    ASSIGNMENT_AND_PAYMENT_STAGES,
+    MANUAL_PAYMENT_CHOICES,
+    WORKFLOW_FIELD_STAGES,
+)
 from .common import record_url, return_to_list
 
 
@@ -70,7 +86,9 @@ def orders(request):
     valid_filters = filters.is_valid()
     query = filters.cleaned_data.get("q", "")
     queryset = with_deadlines(
-        ServiceOrder.objects.select_related("customer", "assigned_to").prefetch_related(
+        ServiceOrder.objects.select_related(
+            "customer", "assigned_to", "complaint"
+        ).prefetch_related(
             Prefetch("items", queryset=OrderItem.objects.select_related("product")),
             Prefetch(
                 "charges", queryset=OrderServiceCharge.objects.select_related("item")
@@ -109,6 +127,13 @@ def orders(request):
         ):
             conditions |= Q(pk=int(reference_number))
         queryset = queryset.filter(conditions)
+    complaint_filter = filters.cleaned_data.get("complaint")
+    if complaint_filter == "no":
+        queryset = queryset.exclude(complaint__logged=True)
+    elif complaint_filter:
+        queryset = queryset.filter(complaint__logged=True)
+        if complaint_filter != "yes":
+            queryset = queryset.filter(complaint__outcome=complaint_filter)
     counts = work_counts(queryset, request.user)
     selected_view = filters.cleaned_data.get("view") or "all"
     queryset = queryset.filter(work_condition(selected_view, request.user))
@@ -174,20 +199,62 @@ def orders(request):
             "quick_views": quick_views,
             "quick_edit_stages": ASSIGNMENT_AND_PAYMENT_STAGES,
             "quick_edit_assignees": quick_edit_assignees,
-            "quick_edit_payment_choices": ServiceOrder.PaymentStatus.choices,
+            "quick_edit_payment_choices": MANUAL_PAYMENT_CHOICES,
         },
     )
 
 
-def _order_form(request, instance=None):
+def order_form_response(
+    request, instance=None, *, refund_form=None, editing_refund=None
+):
+    order_data = (
+        request.POST if request.method == "POST" and refund_form is None else None
+    )
     editor = OrderEditor(
         user=request.user,
         instance=instance,
-        data=request.POST if request.method == "POST" else None,
+        data=order_data,
     )
-    if request.method == "POST" and editor.is_valid():
+    complaint = getattr(instance, "complaint", None)
+    can_adjust = instance is not None and request.user.has_perms(
+        ("crm.view_serviceorder", "crm.change_serviceorder")
+    )
+    complaint_form = None
+    if can_adjust:
+        complaint_data = (
+            order_data
+            if order_data is not None and "complaint-revision" in order_data
+            else None
+        )
+        complaint_form = OrderComplaintForm(
+            complaint_data,
+            order=instance,
+            instance=complaint or OrderComplaint(order=instance, logged=False),
+            prefix="complaint",
+        )
+
+    complaint_valid = (
+        not complaint_form or not complaint_form.is_bound or complaint_form.is_valid()
+    )
+    if order_data is not None and editor.is_valid() and complaint_valid:
         try:
-            order = editor.save()
+            with transaction.atomic():
+                order = editor.save()
+                if (
+                    complaint_form
+                    and complaint_form.is_bound
+                    and complaint_form.has_changed()
+                ):
+                    if complaint or complaint_form.cleaned_data["logged"]:
+                        entry = complaint_form.save(commit=False)
+                        if (
+                            entry.affected_service_id
+                            and not order.charges.filter(
+                                pk=entry.affected_service_id
+                            ).exists()
+                        ):
+                            entry.affected_service = None
+                        entry.save()
         except OrderConflict as error:
             editor.form.add_error(None, str(error))
         except IntegrityError:
@@ -236,12 +303,52 @@ def _order_form(request, instance=None):
         if editor.new_customer or editor.editing_customer
         else selected_customer["notes"] if selected_customer else ""
     )
+    order = editor.instance
+    if order.pk:
+        prefetch_related_objects(
+            [order],
+            Prefetch(
+                "refunds",
+                queryset=OrderRefund.objects.select_related(
+                    "recorded_by"
+                ).prefetch_related(
+                    Prefetch(
+                        "amount_changes",
+                        queryset=OrderRefundAmountChange.objects.select_related(
+                            "changed_by"
+                        ),
+                    )
+                ),
+            ),
+        )
+    refunds = order.refunds.all() if order.pk else ()
+    refund_total = order.total_refunded if order.pk else None
+    if refund_form is None and can_adjust and order.can_record_refund:
+        refund_form = OrderRefundForm(order=order)
     return render(
         request,
         "crm/order_form.html",
         {
             "editor": editor,
-            "order": editor.instance,
+            "order": order,
+            "complaint": complaint,
+            "complaint_form": complaint_form,
+            "refund_form": refund_form,
+            "editing_refund": editing_refund,
+            "refund_edit_limit": (
+                order.refund_amount_received - refund_total + editing_refund.amount
+                if editing_refund
+                else None
+            ),
+            "refunds": refunds,
+            "refund_total": refund_total,
+            "refund_remaining": (
+                order.refund_amount_received - refund_total
+                if order.refund_amount_received is not None
+                else None
+            ),
+            "net_order_value": order.total - refund_total if refund_total else None,
+            "has_adjustment_history": complaint is not None or bool(refunds),
             "service_catalog": catalog,
             "customer_catalog": customer_catalog,
             "customer_notes": customer_notes,
@@ -261,7 +368,7 @@ def _order_form(request, instance=None):
 @login_required
 @permission_required("crm.add_serviceorder", raise_exception=True)
 def create_order(request):
-    return _order_form(request)
+    return order_form_response(request)
 
 
 @login_required
@@ -319,7 +426,10 @@ def save_order_customer(request, customer_id, order_id=None):
 @login_required
 @permission_required("crm.change_serviceorder", raise_exception=True)
 def edit_order(request, order_id):
-    return _order_form(request, get_object_or_404(ServiceOrder, pk=order_id))
+    orders_with_history = ServiceOrder.objects.select_related("complaint")
+    return order_form_response(
+        request, get_object_or_404(orders_with_history, pk=order_id)
+    )
 
 
 @login_required
@@ -401,7 +511,11 @@ def delete_order(request, order_id):
                 status=ServiceOrder.Status.DRAFT,
                 revision=form.cleaned_data["revision"],
             )
-            .filter(~Exists(Invoice.objects.filter(order_id=OuterRef("pk"))))
+            .filter(
+                ~Exists(Invoice.objects.filter(order_id=OuterRef("pk"))),
+                ~Exists(OrderComplaint.objects.filter(order_id=OuterRef("pk"))),
+                ~Exists(OrderRefund.objects.filter(order_id=OuterRef("pk"))),
+            )
             .update(revision=F("revision") + 1)
         )
         order = get_object_or_404(ServiceOrder, pk=order_id)
@@ -410,6 +524,10 @@ def delete_order(request, order_id):
         if not claimed and order.invoices.exists():
             return HttpResponseForbidden(
                 "Orders with invoice history cannot be deleted."
+            )
+        if not claimed and (hasattr(order, "complaint") or order.refunds.exists()):
+            return HttpResponseForbidden(
+                "Orders with complaint or refund history cannot be deleted."
             )
         if not claimed:
             messages.error(request, "The draft changed. Review it before deleting.")

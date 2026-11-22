@@ -76,13 +76,13 @@ class OrderListUpdateTests(TestCase):
             self.client.get(reverse("orders")), f"Collected for {order.reference}"
         )
         self.assertRedirects(
-            self.post(order, payment_status="refunded", collected="true"),
+            self.post(order, payment_status="paid", collected="true"),
             reverse("orders"),
         )
         order.refresh_from_db()
         self.assertFalse(order.collected)
         self.assertEqual(order.assigned_to, self.worker)
-        self.assertEqual(order.payment_status, ServiceOrder.PaymentStatus.REFUNDED)
+        self.assertEqual(order.payment_status, ServiceOrder.PaymentStatus.PAID)
         self.assertRedirects(self.post(order, assigned_to=""), reverse("orders"))
         order.refresh_from_db()
         self.assertIsNone(order.assigned_to)
@@ -105,6 +105,8 @@ class OrderListUpdateTests(TestCase):
             {"assigned_to": ""},
             {"assigned_to": self.inactive.pk},
             {"payment_status": "unknown"},
+            {"payment_status": "refunded"},
+            {"payment_status": "full_refund"},
             {"collected": "unknown"},
         ):
             self.assertRedirects(self.post(order, **changes), reverse("orders"))
@@ -117,7 +119,7 @@ class OrderListUpdateTests(TestCase):
         self.assertContains(self.client.get(reverse("orders")), "inactive (Inactive)")
         self.assertRedirects(self.post(order, payment_status="paid"), reverse("orders"))
         self.assertRedirects(
-            self.post(order, payment_status="refunded"), reverse("orders")
+            self.post(order, payment_status="unpaid"), reverse("orders")
         )
         order.refresh_from_db()
         self.assertEqual(order.payment_status, ServiceOrder.PaymentStatus.PAID)

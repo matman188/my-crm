@@ -16,6 +16,9 @@
         const label = trigger.textContent.trim();
         title.textContent = label;
         message.textContent = trigger.dataset.confirm;
+        if (form && window.crmUX?.isDirty(document.querySelector("[data-order-refund]"))) {
+            message.textContent += " The unsaved refund will be discarded.";
+        }
         confirmButton.textContent = label;
         confirmButton.classList.toggle("danger", trigger.classList.contains("danger"));
         confirmButton.disabled = false;

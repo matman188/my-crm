@@ -40,7 +40,7 @@
             <tr{% if perms.crm.change_serviceorder %} data-directory-row{% endif %}>
                 <td><strong>{% if perms.crm.change_serviceorder %}<a href="{% url 'edit_order' order.pk %}" data-directory-link>{{ order.reference }}</a>{% else %}{{ order.reference }}{% endif %}</strong><div class="meta">{{ order.created_at|date:'d M Y' }}</div>{% if order.is_overdue %}<span class="urgency overdue">Overdue</span>{% elif order.is_due_today %}<span class="urgency due-today">Due today</span>{% endif %}</td>
                 <td>{{ order.customer }}{% if order.customer.company %}<div class="meta">{{ order.customer.company }}</div>{% endif %}</td>
-                <td><span class="role-badge order-state order-state-{{ order.status }}">{{ order.get_status_display }}</span></td>
+                <td><span class="role-badge order-state order-state-{{ order.status }}">{{ order.get_status_display }}</span>{% if order.complaint.logged %}<div><span class="role-badge order-complaint-badge">Complaint logged</span></div>{% endif %}</td>
                 <td>
                     {% if perms.crm.change_serviceorder and order.status == 'complete' %}
                         <select class="order-list-select" name="collected" form="{{ form_id }}" aria-label="Collected for {{ order.reference }}">
@@ -50,7 +50,7 @@
                     {% else %}{{ order.collected|yesno:'Yes,No' }}{% endif %}
                 </td>
                 <td>
-                    {% if perms.crm.change_serviceorder and order.status in quick_edit_stages %}
+                    {% if perms.crm.change_serviceorder and order.status in quick_edit_stages and not order.payment_status_managed_by_refunds %}
                         <select class="order-list-select" name="payment_status" form="{{ form_id }}" aria-label="Payment status for {{ order.reference }}">
                             {% for value, label in quick_edit_payment_choices %}<option value="{{ value }}"{% if order.payment_status == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
                         </select>

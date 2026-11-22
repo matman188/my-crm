@@ -24,6 +24,8 @@ def has_work_history(user):
         or user.created_orders.exists()
         or user.issued_invoices.exists()
         or user.closed_invoices.exists()
+        or user.recorded_refunds.exists()
+        or user.refund_amount_changes.exists()
     )
 
 
@@ -167,7 +169,7 @@ def delete_user(request, user_id):
     if user_to_delete.pk == request.user.pk or has_work_history(user_to_delete):
         messages.error(
             request,
-            "This user has order or invoice history or is your account. Deactivate staff to retain their history.",
+            "This user has order, invoice or refund history, or is your account. Deactivate staff to retain their history.",
         )
         return return_to_list(request, "users")
 
@@ -176,7 +178,7 @@ def delete_user(request, user_id):
     except ProtectedError:
         messages.error(
             request,
-            "This user has order or invoice history. Deactivate the account to retain it.",
+            "This user has order, invoice or refund history. Deactivate the account to retain it.",
         )
         return return_to_list(request, "users")
     messages.success(request, f"User '{username}' was deleted.")

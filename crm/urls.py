@@ -2,6 +2,11 @@ from django.urls import path
 from crm.views.catalog import set_catalog_archive
 from crm.views.users import set_user_active
 from crm.views.orders import update_order_workflow
+from crm.views.order_adjustments import (
+    edit_order_complaint,
+    edit_order_refund_amount,
+    record_order_refund,
+)
 from crm.views.invoices import (
     invoice_logo,
     order_invoice_action,
@@ -85,6 +90,19 @@ urlpatterns = [
     path("orders/", orders, name="orders"),
     path("orders/create/", create_order, name="create_order"),
     path("orders/<int:order_id>/edit/", edit_order, name="edit_order"),
+    path(
+        "orders/<int:order_id>/complaint/",
+        edit_order_complaint,
+        name="edit_order_complaint",
+    ),
+    path(
+        "orders/<int:order_id>/refund/", record_order_refund, name="record_order_refund"
+    ),
+    path(
+        "orders/<int:order_id>/refund/<int:refund_id>/edit/",
+        edit_order_refund_amount,
+        name="edit_order_refund_amount",
+    ),
     path(
         "orders/<int:order_id>/workflow/",
         update_order_workflow,

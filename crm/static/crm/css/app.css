@@ -1232,6 +1232,37 @@ body {
     color: #62428a;
 }
 
+.order-payment-partial_refund, .order-complaint-badge {
+    background: #fff0c7;
+    color: #513500;
+}
+
+.order-payment-full_refund {
+    background: #eee7f7;
+    color: #4c3079;
+}
+
+.order-adjustments {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+    gap: 20px;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}
+
+.order-adjustments h4 { margin: 0; }
+.order-adjustments p { margin: 10px 0; }
+.order-adjustments textarea { min-height: 0; }
+.order-adjustments details { margin-top: 12px; }
+.order-adjustments summary { cursor: pointer; }
+.order-adjustments .form-field { margin-top: 10px; }
+.order-refund-entry > summary { width: fit-content; }
+.order-refund-entry > button { margin-top: 12px; }
+.adjustment-details { white-space: pre-wrap; overflow-wrap: anywhere; }
+.order-refund-history { list-style: none; margin: 12px 0 0; padding: 0; }
+.order-refund-history li { padding: 10px 0; border-top: 1px solid var(--border); }
+
 .invoice-status {
     gap: .4em;
     border: 1px solid transparent;

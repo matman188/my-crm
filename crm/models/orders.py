@@ -16,6 +16,8 @@ class ServiceOrder(models.Model):
         UNPAID = "unpaid", "Unpaid"
         PAID = "paid", "Paid"
         REFUNDED = "refunded", "Refunded"
+        PARTIALLY_REFUNDED = "partial_refund", "Partially refunded"
+        FULLY_REFUNDED = "full_refund", "Fully refunded"
 
     customer = models.ForeignKey(
         "crm.Customer", on_delete=models.PROTECT, related_name="orders"
@@ -38,7 +40,10 @@ class ServiceOrder(models.Model):
     )
     collected = models.BooleanField(default=False)
     payment_status = models.CharField(
-        max_length=10, choices=PaymentStatus.choices, default=PaymentStatus.UNPAID
+        max_length=20, choices=PaymentStatus.choices, default=PaymentStatus.UNPAID
+    )
+    refund_amount_received = models.DecimalField(
+        max_digits=22, decimal_places=2, null=True, blank=True, editable=False
     )
     currency = models.CharField(max_length=3)
     notes = models.TextField(blank=True)
@@ -57,8 +62,21 @@ class ServiceOrder(models.Model):
                 name="service_order_valid_status",
             ),
             models.CheckConstraint(
-                condition=models.Q(payment_status__in=("unpaid", "paid", "refunded")),
+                condition=models.Q(
+                    payment_status__in=(
+                        "unpaid",
+                        "paid",
+                        "refunded",
+                        "partial_refund",
+                        "full_refund",
+                    )
+                ),
                 name="service_order_valid_payment_status",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(refund_amount_received__isnull=True)
+                | models.Q(refund_amount_received__gt=0),
+                name="order_refund_amount_received_positive",
             ),
         ]
 
@@ -69,6 +87,26 @@ class ServiceOrder(models.Model):
     @property
     def total(self):
         return sum((charge.total for charge in self.charges.all()), Decimal("0.00"))
+
+    @property
+    def payment_status_managed_by_refunds(self):
+        return self.payment_status in (
+            self.PaymentStatus.REFUNDED,
+            self.PaymentStatus.PARTIALLY_REFUNDED,
+            self.PaymentStatus.FULLY_REFUNDED,
+        )
+
+    @property
+    def can_record_refund(self):
+        return self.payment_status in (
+            self.PaymentStatus.PAID,
+            self.PaymentStatus.REFUNDED,
+            self.PaymentStatus.PARTIALLY_REFUNDED,
+        )
+
+    @property
+    def total_refunded(self):
+        return sum((refund.amount for refund in self.refunds.all()), Decimal("0.00"))
 
     def __str__(self):
         return self.reference

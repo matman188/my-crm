@@ -9,6 +9,7 @@ from crm.forms.customers import CustomerForm
 from crm.models import (
     Customer,
     Invoice,
+    OrderComplaint,
     OrderItem,
     Product,
     OrderServiceCharge,
@@ -16,7 +17,12 @@ from crm.models import (
     ServiceOrder,
     SystemSettings,
 )
-from crm.order_workflow import ORDER_ACTIONS, SAVE_LABELS, WORKFLOW_FIELD_STAGES
+from crm.order_workflow import (
+    MANUAL_PAYMENT_CHOICES,
+    ORDER_ACTIONS,
+    SAVE_LABELS,
+    WORKFLOW_FIELD_STAGES,
+)
 from crm.order_queries import WORK_VIEWS
 
 
@@ -76,6 +82,10 @@ class OrderWorkflowForm(forms.ModelForm):
         )
         for name, stages in WORKFLOW_FIELD_STAGES.items():
             self.fields[name].disabled = self.instance.status not in stages
+        if self.instance.payment_status_managed_by_refunds:
+            self.fields["payment_status"].disabled = True
+        else:
+            self.fields["payment_status"].choices = MANUAL_PAYMENT_CHOICES
         if self.instance.pk:
             self.fields["revision"].required = True
             self.initial["revision"] = self.instance.revision
@@ -228,6 +238,15 @@ class OrderFilterForm(forms.Form):
     payment_status = forms.ChoiceField(
         label="Payment status",
         choices=[("", "All payments"), *ServiceOrder.PaymentStatus.choices],
+        required=False,
+    )
+    complaint = forms.ChoiceField(
+        choices=[
+            ("", "Any complaint status"),
+            ("yes", "Complaint logged"),
+            ("no", "No complaint"),
+            *OrderComplaint.Outcome.choices,
+        ],
         required=False,
     )
 

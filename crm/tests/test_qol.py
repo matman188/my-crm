@@ -516,10 +516,13 @@ class QualityOfLifeTests(TestCase):
         draft = self.client.get(reverse("edit_order", args=[order.pk])).content.decode()
         order.status = "in_progress"
         order.assigned_to = self.worker
+        order.payment_status = "paid"
         order.save()
         progress = self.client.get(
             reverse("edit_order", args=[order.pk])
         ).content.decode()
+        order.payment_status = "unpaid"
+        order.save(update_fields=["payment_status"])
         Customer.objects.bulk_create(
             Customer(
                 first_name="Alex",

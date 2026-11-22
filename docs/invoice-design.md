@@ -8,10 +8,11 @@ saved order and preview an unnumbered PDF. From In Progress or Complete, use
 The PDF preview opens in the browser's viewer, which also has a download action.
 
 The invoice record freezes the customer, charges, currency, business details,
-printed date, template version and the referenced logo. New numbers use the
-configured prefix, company-local issue date and global invoice sequence, for
-example `INV-20261122-000004`. The sequence continues across dates. Existing
-invoices keep their original numbers. PDFs render
+printed date, template version and the referenced logo. New numbers use `INV`,
+the company-local issue date, and the sequence for that date, for example
+`INV2026112201`. The sequence starts at `01` each day and counts earlier invoices
+on that date. Corrections and voided invoices keep their assigned numbers.
+Existing invoices keep their original numbers. PDFs render
 on demand and are sent with `Cache-Control: private, no-store`. Database backups
 should include the historical logo files referenced by the records. No customer
 address or tax calculation is supplied by the current order data model.
@@ -23,7 +24,7 @@ replacement by number. Use **Void invoice** to cancel the bill outright and keep
 it in the order history. These actions require an
 Unpaid order and confirmation that the invoice has yet to be shared. Agree the
 process for invoices already sent or paid before supporting those corrections.
-Email delivery, refund records and reporting remain future work.
+Email delivery and the dedicated order report remain future work.
 
 ## Original proposal
 
@@ -167,6 +168,24 @@ its financial treatment and any refund handling need explicit agreement.
 
 ## Simple refunds and reporting directly on orders
 
+In **Order Details**, check **Complaint logged**, add a note if useful and save
+the order. The outcome and affected service are under **Optional complaint
+details**. Free rework can be logged without issuing a new invoice. The Orders
+list can filter logged complaints and their outcomes.
+
+Expand **Record refund** in Order Details and enter the amount returned. Confirm
+the original payment on the first entry. The date defaults to today in the
+company timezone. Reason, a different date and affected service are optional.
+Each entry is limited to the remaining balance. The order displays its refund
+history, total refunded and net order value. **Partially refunded** and **Fully
+refunded** are calculated from the entries. Existing manual **Refunded** flags
+retain their status until the first refund amount is recorded. The dedicated
+order report remains planned.
+
+Use **Edit amount** in **Refund history** to correct a recorded amount. The order
+recalculates its totals and payment status. **Amount edits** shows the previous
+amount, corrected amount, date, and person who made each change.
+
 Planned for later implementation: the operator reports directly on Service
 Orders and handles refunds on the same screen. Invoice versions and PDF history
 stay attached supporting records. Keep one order for the piece of work; do not
@@ -229,15 +248,14 @@ Keep credentials outside source control and ordinary business settings.
    survive changes to customers, catalogue, settings, notes and operational dates.
 6. Add the email review/delivery history flow, connecting actual sending when the
    mail server is configured (D08).
-7. Add simple refund entries and the order-based report above: refund capture,
-   derived refund/net totals, order-date filters, status/payment/assignee filters
-   and CSV export. Confirm refund validation and payment-summary rules first.
+7. Build the order-based report using the recorded refunds and net totals. Add
+   order-date, status/payment/assignee filters and CSV export.
 
 Implemented: invoice settings, migration 0015, logo handling and ephemeral sample
 PDF preview/download. Invoice records/numbering, actual order invoice generation,
 issued PDF storage/history and email delivery remain planned.
-Refund recording, net-order totals and the order-based report are also planned,
-not implemented by this update.
+Refund recording and net-order totals are available on orders. The order-based
+report remains planned.
 
 ## Technical references
 

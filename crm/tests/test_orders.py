@@ -1186,7 +1186,7 @@ class ServiceOrderTests(TestCase):
             self.assertEqual(order.payment_status, ServiceOrder.PaymentStatus.PAID)
             self.assertEqual(order.status, status)
 
-    def test_refunded_can_be_saved_without_changing_order_work_or_charges(self):
+    def test_refund_status_cannot_be_set_directly_on_order_form(self):
         for status in ("in_progress", "complete"):
             with self.subTest(status=status):
                 order = self.create_order(
@@ -1204,11 +1204,11 @@ class ServiceOrderTests(TestCase):
                     self.client.post(
                         reverse("edit_order", args=[order.pk]), data
                     ).status_code,
-                    302,
+                    200,
                 )
                 order.refresh_from_db()
                 self.assertEqual(
-                    order.payment_status, ServiceOrder.PaymentStatus.REFUNDED
+                    order.payment_status, ServiceOrder.PaymentStatus.PAID
                 )
                 self.assertEqual(order.status, status)
                 self.assertTrue(order.collected)
@@ -1218,9 +1218,9 @@ class ServiceOrderTests(TestCase):
                 self.assertEqual(order.total, Decimal("99.40"))
                 self.assertEqual(list(order.charges.values()), charges)
                 response = self.client.get(reverse("edit_order", args=[order.pk]))
-                self.assertContains(
+                self.assertNotContains(
                     response,
-                    '<option value="refunded" selected>Refunded</option>',
+                    '<option value="refunded">Refunded</option>',
                     html=True,
                 )
 
@@ -1248,13 +1248,13 @@ class ServiceOrderTests(TestCase):
         self.assertContains(
             response,
             'class="role-badge order-payment-refunded">Refunded</span>',
-            count=1,
+            count=2,
         )
         self.assertContains(
             response,
             '<option value="refunded" selected>Refunded</option>',
             html=True,
-            count=2,
+            count=1,
         )
         response = self.client.get(
             reverse("orders"), {"payment_status": "refunded", "status": "complete"}

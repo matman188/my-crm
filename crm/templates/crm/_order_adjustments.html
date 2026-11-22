@@ -1,0 +1,99 @@
+<div class="order-adjustments">
+    <section aria-labelledby="order-complaint-heading">
+        <h4 id="order-complaint-heading">Complaint</h4>
+        {% if complaint_form %}
+            {{ complaint_form.revision }}{{ complaint_form.revision.errors }}
+            {{ complaint_form.non_field_errors }}
+            <div class="form-field order-collected-field">
+                <label for="{{ complaint_form.logged.id_for_label }}">{{ complaint_form.logged }} Complaint logged</label>
+                {{ complaint_form.logged.errors }}
+            </div>
+            <div class="form-field">{{ complaint_form.details.as_field_group }}</div>
+            <details {% if complaint_form.outcome.errors or complaint_form.affected_service.errors %}open{% endif %}>
+                <summary>Optional complaint details</summary>
+                <div class="form-field">{{ complaint_form.outcome.as_field_group }}</div>
+                <div class="form-field">{{ complaint_form.affected_service.as_field_group }}</div>
+            </details>
+            {% if complaint.logged %}
+                <p class="meta">{{ complaint.logged_at|date:'d M Y H:i T' }}{% if complaint.outcome %} · {{ complaint.get_outcome_display }}{% endif %}</p>
+                {% if complaint.service_description %}<p class="meta">{{ complaint.service_description }}</p>{% endif %}
+            {% endif %}
+        {% elif complaint.logged %}
+            <p><span class="role-badge order-complaint-badge">Complaint logged</span> <span class="meta">{{ complaint.logged_at|date:'d M Y H:i T' }}</span></p>
+            {% if complaint.outcome %}<p>{{ complaint.get_outcome_display }}</p>{% endif %}
+            {% if complaint.service_description %}<p class="meta">{{ complaint.service_description }}</p>{% endif %}
+            {% if complaint.details %}<p class="adjustment-details">{{ complaint.details }}</p>{% endif %}
+        {% else %}<p class="meta">No complaint logged.</p>{% endif %}
+    </section>
+    <section aria-labelledby="order-refunds-heading">
+        <h4 id="order-refunds-heading">Refunds</h4>
+        {% if refunds %}
+            <dl class="order-summary">
+                <div><dt>Amount received</dt><dd>{{ order.currency }} {{ order.refund_amount_received|floatformat:2 }}</dd></div>
+                <div><dt>Total refunded</dt><dd>{{ order.currency }} {{ refund_total|floatformat:2 }}</dd></div>
+                <div><dt>Net order value</dt><dd>{{ order.currency }} {{ net_order_value|floatformat:2 }}</dd></div>
+            </dl>
+            <details {% if editing_refund %}open{% endif %}>
+                <summary>Refund history ({{ refunds|length }})</summary>
+                <ul class="order-refund-history">
+                    {% for refund in refunds %}
+                        <li id="refund-{{ refund.pk }}">
+                            <div class="order-row-footer">
+                                <span><strong>{{ order.currency }} {{ refund.amount|floatformat:2 }}</strong> · {{ refund.refunded_on|date:'d M Y' }}</span>
+                                {% if order.refund_amount_received != None and perms.crm.view_serviceorder and perms.crm.change_serviceorder and refund.pk != editing_refund.pk %}
+                                    <a href="{% url 'edit_order_refund_amount' order.pk refund.pk %}{% if return_to %}?next={{ return_to|urlencode:'' }}{% endif %}#refund-{{ refund.pk }}">Edit amount</a>
+                                {% endif %}
+                            </div>
+                            {% if refund.reason %}<div class="adjustment-details">{{ refund.reason }}</div>{% endif %}
+                            {% if refund.service_description %}<div class="meta">{{ refund.service_description }}</div>{% endif %}
+                            <div class="meta">Recorded {{ refund.recorded_at|date:'d M Y H:i T' }} by {{ refund.recorded_by.get_username }}</div>
+                            {% with changes=refund.amount_changes.all %}
+                                {% if changes %}
+                                    <details>
+                                        <summary>Amount edits ({{ changes|length }})</summary>
+                                        <ul class="order-refund-history">
+                                            {% for change in changes %}
+                                                <li>{{ order.currency }} {{ change.previous_amount|floatformat:2 }} → {{ order.currency }} {{ change.new_amount|floatformat:2 }}<div class="meta">{{ change.changed_at|date:'d M Y H:i T' }} by {{ change.changed_by.get_username }}</div></li>
+                                            {% endfor %}
+                                        </ul>
+                                    </details>
+                                {% endif %}
+                            {% endwith %}
+                            {% if editing_refund.pk == refund.pk %}
+                                <div class="form-field">
+                                    {{ refund_form.revision.errors }}{{ refund_form.non_field_errors }}
+                                    {{ refund_form.amount.as_field_group }}
+                                    <p class="meta">Maximum corrected amount <strong>{{ order.currency }} {{ refund_edit_limit|floatformat:2 }}</strong></p>
+                                </div>
+                                <div class="button-row">
+                                    <button type="submit" class="button" form="order-refund-form">Save amount</button>
+                                    <a href="{% url 'edit_order' order.pk %}{% if return_to %}?next={{ return_to|urlencode:'' }}{% endif %}#order-refunds-heading">Cancel</a>
+                                </div>
+                            {% endif %}
+                        </li>
+                    {% endfor %}
+                </ul>
+            </details>
+        {% elif order.payment_status == 'refunded' %}
+            <p>Refund amount unrecorded. Use Record refund to enter the amount previously returned.</p>
+        {% else %}
+            <p class="meta">No refunds recorded.{% if order.payment_status == 'unpaid' %} Record the payment before adding a refund.{% endif %}</p>
+        {% endif %}
+        {% if refund_form and not editing_refund %}
+            <details class="order-refund-entry" {% if refund_form.is_bound %}open{% endif %}>
+                <summary class="button secondary">Record refund</summary>
+                {{ refund_form.revision.errors }}{{ refund_form.non_field_errors }}
+                {% if refund_remaining != None %}<p>Refundable balance <strong>{{ order.currency }} {{ refund_remaining|floatformat:2 }}</strong></p>{% endif %}
+                <div class="form-field">{{ refund_form.amount.as_field_group }}</div>
+                {% if refund_form.amount_received %}<div class="form-field">{{ refund_form.amount_received.as_field_group }}</div>{% endif %}
+                <details {% if refund_form.refunded_on.errors or refund_form.reason.errors or refund_form.affected_service.errors %}open{% endif %}>
+                    <summary>Optional refund details</summary>
+                    <div class="form-field">{{ refund_form.refunded_on.as_field_group }}</div>
+                    <div class="form-field">{{ refund_form.reason.as_field_group }}</div>
+                    <div class="form-field">{{ refund_form.affected_service.as_field_group }}</div>
+                </details>
+                <button type="submit" class="button" form="order-refund-form">Save refund</button>
+            </details>
+        {% endif %}
+    </section>
+</div>

@@ -9,6 +9,10 @@ WORKFLOW_FIELD_STAGES = {
     "payment_status": ASSIGNMENT_AND_PAYMENT_STAGES,
     "collected": (ServiceOrder.Status.COMPLETE,),
 }
+MANUAL_PAYMENT_CHOICES = (
+    (ServiceOrder.PaymentStatus.UNPAID, ServiceOrder.PaymentStatus.UNPAID.label),
+    (ServiceOrder.PaymentStatus.PAID, ServiceOrder.PaymentStatus.PAID.label),
+)
 
 # These are the permitted transitions, shared by validation and the action buttons.
 ORDER_ACTIONS = {

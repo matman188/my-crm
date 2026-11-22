@@ -2,11 +2,11 @@ from collections import defaultdict
 from datetime import date
 
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Q
 from django.utils import timezone
 
 from crm.invoice_pdf import invoice_business_details
-from crm.models import Invoice, ServiceOrder, SystemSettings
+from crm.models import Invoice, InvoiceDaySequence, ServiceOrder, SystemSettings
 
 
 INVOICE_STAGES = (ServiceOrder.Status.IN_PROGRESS, ServiceOrder.Status.COMPLETE)
@@ -122,14 +122,14 @@ def apply_invoice_action(order_id, action, *, user, revision, invoice_id, reason
                 now,
                 order.invoice_revision_reason,
             )
-        # The primary key supplies the global sequence. The other segments use
-        # the prefix and company-local date captured when the invoice is issued.
+        number_date = date.fromisoformat(snapshot["issue_date"])
         result = Invoice.objects.create(
             order=order,
             issued_by=user,
             issued_at=now,
-            number_prefix=settings.invoice_prefix,
-            number_date=date.fromisoformat(snapshot["issue_date"]),
+            number_prefix="INV",
+            number_date=number_date,
+            daily_sequence=next_daily_sequence(number_date),
             snapshot=snapshot,
             logo=settings.invoice_logo.name or "",
             replaces=active,
@@ -141,6 +141,22 @@ def apply_invoice_action(order_id, action, *, user, revision, invoice_id, reason
         update_fields=["revision", "status", "invoice_revision_reason", "updated_at"]
     )
     return result
+
+
+def next_daily_sequence(issue_date):
+    # Seed a day's counter with invoices that may have used an earlier format.
+    existing = Invoice.objects.filter(
+        Q(number_date=issue_date)
+        | Q(number_date__isnull=True, snapshot__issue_date=issue_date.isoformat())
+    )
+    counter, _ = InvoiceDaySequence.objects.get_or_create(
+        issue_date=issue_date, defaults={"last_number": existing.count}
+    )
+    InvoiceDaySequence.objects.filter(pk=counter.pk).update(
+        last_number=F("last_number") + 1
+    )
+    counter.refresh_from_db(fields=("last_number",))
+    return counter.last_number
 
 
 def close_invoice(invoice, status, user, closed_at, reason):

@@ -54,8 +54,10 @@
                 state.rowSave.disabled = !dirty;
                 return;
             }
-            state.label.textContent = dirty ? "Unsaved changes" : location.pathname.includes("/create/") ? "New record" : "Saved";
-            state.label.classList.toggle("is-dirty", dirty);
+            if (state.label) {
+                state.label.textContent = dirty ? "Unsaved changes" : location.pathname.includes("/create/") ? "New record" : "Saved";
+                state.label.classList.toggle("is-dirty", dirty);
+            }
         }
     }
     function notify(message) {
@@ -97,9 +99,17 @@
         const leavingDirty = new URL(form.action, location.href).pathname === "/logout/" && hasUnsaved();
         const quickOrderSave = form.matches("[data-order-list-edit]");
         const otherRowsDirty = quickOrderSave && [...tracked.keys()].some(other => other !== form && isDirty(other));
+        const refundForm = document.querySelector("[data-order-refund]");
+        const orderEditor = document.querySelector("[data-order-editor]");
+        let otherEditsMessage = "";
+        if (form === refundForm && isDirty(orderEditor)) {
+            otherEditsMessage = "Save the order first, or continue and discard the unsaved order changes.";
+        } else if (form === orderEditor && isDirty(refundForm)) {
+            otherEditsMessage = "Save the order and discard the unsaved refund?";
+        }
         const message = button?.dataset.confirm || (leavingDirty ? "Log out and discard your unsaved changes?" : "") ||
-            (otherRowsDirty ? "Save this order and discard unsaved changes on the other rows?" : "");
-        const ownConfirmation = form.matches("[data-order-editor], #delete-draft-form");
+            (otherRowsDirty ? "Save this order and discard unsaved changes on the other rows?" : otherEditsMessage);
+        const ownConfirmation = button?.dataset.confirm && form.matches("[data-order-editor], #delete-draft-form");
         if (message && !ownConfirmation && approved.get(form) !== button) {
             event.preventDefault();
             const label = button?.textContent.trim() || "Log out";
@@ -152,14 +162,15 @@
         }
         document.querySelectorAll('form[method="post"]').forEach(form => {
             addNext(form, next || (list ? location.pathname + location.search : ""));
-            if (form.matches("[data-directory-selection]") || form.closest("dialog") || !form.querySelector('input:not([type="hidden"]):not([type="submit"]), textarea, select')) return;
+            const fields = Array.from(form.elements).filter(field => field.matches('input:not([type="hidden"]):not([type="submit"]), textarea, select'));
+            if (form.matches("[data-directory-selection]") || form.closest("dialog") || !fields.length) return;
             const rowSave = form.querySelector("[data-order-row-save]");
-            const label = rowSave ? null : document.createElement("p");
+            const refundForm = form.matches("[data-order-refund]");
+            const label = rowSave || refundForm ? null : document.createElement("p");
             if (label) { label.className = "save-state"; label.setAttribute("role", "status"); form.prepend(label); }
-            tracked.set(form, { initial: signature(form), invalid: Boolean(form.querySelector('[aria-invalid="true"], .non-field-errors:not([hidden])')), label, rowSave });
-            const eventTargets = rowSave
-                ? [form, ...Array.from(form.elements).filter(field => !form.contains(field))]
-                : [form];
+            const invalid = fields.filter(field => field.matches('[aria-invalid="true"]:not(:disabled)') && !field.closest("dialog"));
+            tracked.set(form, { initial: signature(form), invalid: invalid.length > 0 || Boolean(form.querySelector('.non-field-errors:not([hidden])')), label, rowSave });
+            const eventTargets = [form, ...fields.filter(field => !form.contains(field))];
             const refreshForm = () => { updateState(form); markRequired(form); };
             for (const target of eventTargets) {
                 for (const type of ["input", "change", "crm:changed"]) {
@@ -167,8 +178,8 @@
                 }
             }
             updateState(form);
-            const invalid = [...form.querySelectorAll('[aria-invalid="true"]')].filter(field => !field.disabled && field.type !== "hidden" && !field.closest("dialog"));
             if (invalid.length) {
+                if (refundForm) { invalid[0].focus(); return; }
                 const summary = document.createElement("div"); summary.className = "non-field-errors error-summary"; summary.setAttribute("role", "alert");
                 const title = document.createElement("strong"); title.textContent = "Please check these fields:"; summary.append(title);
                 const links = document.createElement("ul");

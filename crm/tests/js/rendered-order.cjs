@@ -116,6 +116,15 @@ async function boot(html, url) {
     assert.equal(duplicated.next, "/orders/?view=mine&page=2");
 
     const progress = await boot(fixtures.progress, "/orders/2/edit/");
+    const refundForm = progress.q("[data-order-refund]");
+    const refundAmount = refundForm.elements.namedItem("amount");
+    const refundSave = progress.q('button[form="order-refund-form"]');
+    assert.equal(progress.editor.elements.namedItem("complaint-logged").type, "checkbox");
+    assert.equal(new progress.w.FormData(progress.editor).has("amount"), false);
+    assert.equal(new progress.w.FormData(refundForm).has("complaint-details"), false);
+    progress.change(refundAmount, "15.00");
+    assert.equal(progress.w.crmUX.isDirty(refundForm), true);
+    assert.equal(progress.w.crmUX.isDirty(progress.editor), false);
     assert.equal(progress.q('[name="items-0-product"]').disabled, true);
     assert.equal(progress.q('[name="items-0-services-0-quantity"]').disabled, true);
     const progressRow = progress.q("[data-order-item]");
@@ -126,6 +135,13 @@ async function boot(html, url) {
     assert.equal(date.value, "2028-01-02");
     assert.equal(progressRow.querySelector('input[name$="-due_time"]').value, "");
     checks.push("In Progress keeps commercial fields locked while updating deadlines");
+    refundForm.requestSubmit(refundSave);
+    assert.equal(progress.q("[data-workspace-confirm]").open, true);
+    assert.match(progress.q("[data-workspace-confirm-message]").textContent, /unsaved order changes/);
+    progress.q("[data-workspace-cancel]").click();
+    assert.equal(date.value, "2028-01-02");
+    progress.change(refundAmount, "");
+    checks.push("complaints save with the order and refunds have their own inline submit");
 
     const complete = progress.q('button[name="action"][value="complete"]');
     assert.ok(complete);
@@ -172,11 +188,11 @@ async function boot(html, url) {
     assert.equal(rowSave.disabled, false);
     assert.equal(new orders.w.FormData(firstEdit).get("payment_status"), "paid");
     assert.equal(firstEdit.elements.namedItem("next").value, "/orders/?status=in_progress");
-    orders.change(otherPayment, "refunded");
+    orders.change(otherPayment, "paid");
     firstEdit.requestSubmit(rowSave);
     assert.equal(orders.q("[data-workspace-confirm]").open, true);
     orders.q("[data-workspace-cancel]").click();
-    assert.equal(otherPayment.value, "refunded");
+    assert.equal(otherPayment.value, "paid");
     orders.change(otherPayment, "unpaid");
     let savedRow = null;
     orders.w.document.addEventListener("submit", event => {

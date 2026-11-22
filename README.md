@@ -26,10 +26,10 @@ section of a saved order. Generate a numbered invoice in In Progress or Complete
 then preview or download its PDF. The invoice record stores the issued billing
 details and the app renders PDFs on demand. Email delivery is planned.
 
-The same plan records [simple order-based refunds and reporting](docs/invoice-design.md#simple-refunds-and-reporting-directly-on-orders)
-for later implementation: attached refund entries, Total Refunded and Net Order
-Value, and reports filtered directly on Service Orders. Separate cash-flow and
-accounting screens are deferred.
+Order Details supports [complaints and refunds](docs/invoice-design.md#simple-refunds-and-reporting-directly-on-orders).
+Log a complaint with an optional service and outcome, or record money returned
+to a customer. Orders can be filtered by complaint outcome or refund status.
+Separate cash-flow and accounting screens are deferred.
 
 For development checks, run `python manage.py test crm.tests --noinput`.
 Install Node test dependencies with `npm ci`, then run `npm test` for JavaScript

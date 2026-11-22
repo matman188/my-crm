@@ -104,8 +104,8 @@ class InvoiceSettingsForm(SettingsDetailsForm):
         regex=r"^[A-Z0-9][A-Z0-9-]{0,11}$",
         max_length=12,
         initial="INV",
-        label="Invoice prefix",
-        help_text="With the INV prefix, a new invoice number could be INV-20261122-000004.",
+        label="Sample preview prefix",
+        help_text="Issued invoices use INV followed by the date and daily sequence, for example INV2026112201.",
     )
 
     def clean_invoice_prefix(self):

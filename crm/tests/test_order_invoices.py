@@ -16,6 +16,7 @@ from crm.authz import ACCESS_LEVEL_USER, assign_access_level
 from crm.models import (
     Customer,
     Invoice,
+    InvoiceDaySequence,
     OrderItem,
     OrderServiceCharge,
     Product,
@@ -176,9 +177,64 @@ class OrderInvoiceTests(TestCase):
                 self.pdf_text(self.client.get(self.pdf_url(invoice))), original_pdf
             )
 
+    def test_daily_sequence_is_shared_across_orders_and_resets_at_local_midnight(self):
+        SystemSettings.objects.filter(pk=1).update(invoice_prefix="SAMPLE")
+        other_orders = []
+        for _ in range(2):
+            order = ServiceOrder.objects.create(
+                customer=self.customer,
+                currency="ZAR",
+                status=ServiceOrder.Status.IN_PROGRESS,
+            )
+            item = OrderItem.objects.create(
+                order=order, product=self.product, due_date=self.item.due_date
+            )
+            OrderServiceCharge.objects.create(
+                order=order,
+                item=item,
+                service=self.service,
+                quantity=1,
+                unit_price="12.00",
+            )
+            other_orders.append(order)
+
+        with patch(
+            "crm.order_invoices.timezone", wraps=django_timezone
+        ) as invoice_clock:
+            invoice_clock.now.return_value = datetime(
+                2026, 11, 22, 21, 59, tzinfo=timezone.utc
+            )
+            revision = self.order.revision
+            first = self.issue()
+            self.client.post(self.action_url("generate"), {"revision": revision})
+            second = apply_invoice_action(
+                other_orders[0].pk,
+                "generate",
+                user=self.user,
+                revision=other_orders[0].revision,
+                invoice_id=None,
+                reason="",
+            )
+            invoice_clock.now.return_value = datetime(
+                2026, 11, 22, 22, 0, tzinfo=timezone.utc
+            )
+            next_day = apply_invoice_action(
+                other_orders[1].pk,
+                "generate",
+                user=self.user,
+                revision=other_orders[1].revision,
+                invoice_id=None,
+                reason="",
+            )
+
+        self.assertEqual(first.number, "INV2026112201")
+        self.assertEqual(second.number, "INV2026112202")
+        self.assertEqual(next_day.number, "INV2026112301")
+        self.assertEqual(Invoice.objects.count(), 3)
+
     def test_revision_edits_order_then_replaces_legacy_invoice_once(self):
         settings = SystemSettings.get_solo()
-        issued_at = django_timezone.now()
+        issued_at = datetime(2026, 11, 22, 10, tzinfo=timezone.utc)
         invoice = Invoice.objects.create(
             order=self.order,
             issued_by=self.user,
@@ -263,12 +319,16 @@ class OrderInvoiceTests(TestCase):
             "revision": self.order.revision,
             "not_shared": "on",
         }
-        self.assertRedirects(
-            self.client.post(self.action_url("replace"), payload), self.edit_url
-        )
-        self.assertRedirects(
-            self.client.post(self.action_url("replace"), payload), self.edit_url
-        )
+        with patch(
+            "crm.order_invoices.timezone", wraps=django_timezone
+        ) as invoice_clock:
+            invoice_clock.now.return_value = issued_at
+            self.assertRedirects(
+                self.client.post(self.action_url("replace"), payload), self.edit_url
+            )
+            self.assertRedirects(
+                self.client.post(self.action_url("replace"), payload), self.edit_url
+            )
         invoice.refresh_from_db()
         replacement = invoice.replacement
         self.assertEqual(self.order.invoices.count(), 2)
@@ -277,8 +337,7 @@ class OrderInvoiceTests(TestCase):
         self.assertEqual(invoice.closed_by, self.user)
         self.assertEqual(invoice.number, original_number)
         self.assertGreater(replacement.pk, invoice.pk)
-        date_segment = replacement.snapshot["issue_date"].replace("-", "")
-        self.assertEqual(replacement.number, f"INV-{date_segment}-{replacement.pk:06d}")
+        self.assertEqual(replacement.number, "INV2026112202")
         order_page = self.client.get(self.edit_url)
         self.assertContains(order_page, 'invoice-status-superseded">')
         self.assertContains(order_page, f"Replaced by {replacement.number}")
@@ -315,6 +374,9 @@ class OrderInvoiceTests(TestCase):
         invoice.refresh_from_db()
         self.assertEqual(invoice.status, Invoice.Status.ISSUED)
         self.assertEqual(self.order.invoices.count(), 1)
+        self.assertEqual(
+            InvoiceDaySequence.objects.get(pk=invoice.number_date).last_number, 1
+        )
         with patch(
             "crm.views.invoices.render_invoice",
             side_effect=ValueError("PDF temporarily unavailable"),
@@ -396,7 +458,7 @@ class OrderInvoiceTests(TestCase):
             business_timezone="America/New_York", invoice_prefix="NEW"
         )
         order_page = self.client.get(self.edit_url)
-        original_number = f"INV-20261122-{invoice.pk:06d}"
+        original_number = "INV2026112201"
         self.assertContains(order_page, original_number)
         self.assertContains(order_page, "Issued 2026-11-21 18:30 EST by operator")
         self.assertContains(order_page, "Void 2026-11-22 08:13 EST by operator")
