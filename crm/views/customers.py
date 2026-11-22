@@ -1,27 +1,27 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Q
+from django.db.models import Count, OuterRef, Q
 from django.db.models.deletion import ProtectedError
 from django.db.models.functions import Lower
 from django.http import HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_http_methods, require_POST
 
 from .common import list_page, return_to_list, record_url
+from .directory import apply_directory_action, directory_actions, directory_status
 
 from crm.forms import CustomerForm
 from crm.models import Customer, ServiceOrder
 
 
 @login_required
+@require_http_methods(["GET", "HEAD", "POST"])
 def customers(request):
     search_query = request.GET.get("q", "").strip()
-    existing_customers = Customer.objects.annotate(order_count=Count("orders"))
-    customer_status = request.GET.get("status", "active")
-    if customer_status not in ("active", "archived", "all"):
-        customer_status = "active"
+    existing_customers = Customer.objects.all()
+    customer_status = directory_status(request)
     if customer_status != "all":
         existing_customers = existing_customers.filter(
             is_archived=customer_status == "archived"
@@ -42,13 +42,26 @@ def customers(request):
         Lower("last_name"),
         "id",
     )
+    actions = directory_actions(request.user, Customer, customer_status)
+    if request.method == "POST":
+        return apply_directory_action(
+            request,
+            existing_customers,
+            actions,
+            ServiceOrder.objects.filter(customer_id=OuterRef("pk")),
+        )
     return render(
         request,
         "crm/customers.html",
         {
-            **list_page(request, existing_customers, "existing_customers"),
+            **list_page(
+                request,
+                existing_customers.annotate(order_count=Count("orders")),
+                "existing_customers",
+            ),
             "search_query": search_query,
             "customer_status": customer_status,
+            "directory_actions": actions,
         },
     )
 

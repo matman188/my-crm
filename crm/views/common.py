@@ -6,6 +6,9 @@ from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
 
 
+LIST_PAGE_SIZE = 25
+
+
 def return_url(request, default=""):
     candidate = request.POST.get("next") or request.GET.get("next", "")
     if candidate and url_has_allowed_host_and_scheme(
@@ -26,7 +29,7 @@ def record_url(request, name, **kwargs):
 
 
 def list_page(request, queryset, key):
-    page = Paginator(queryset, 25).get_page(request.GET.get("page"))
+    page = Paginator(queryset, LIST_PAGE_SIZE).get_page(request.GET.get("page"))
     params = request.GET.copy()
     params.pop("page", None)
     return {

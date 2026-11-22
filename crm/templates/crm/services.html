@@ -1,4 +1,5 @@
 {% extends "crm/base.html" %}
+{% load static %}
 {% block card_class %} card-list{% endblock %}
 
 {% block title %}Services{% endblock %}
@@ -16,22 +17,25 @@
 
     {% include 'crm/_directory_search.html' with list_url='services' search_placeholder='Search by service name, description, or product' %}
 
+    <div data-directory>
+    {% if existing_services and directory_actions %}{% include 'crm/_directory_bulk_actions.html' %}{% endif %}
     <div class="data-table-shell">
         {% if existing_services %}
             <table class="data-table">
                 <thead>
                     <tr>
+                        {% if directory_actions %}{% include 'crm/_directory_select_all.html' %}{% endif %}
                         <th>Service</th>
                         <th>Price</th>
                         <th>Linked Products</th>
-                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for service in existing_services %}
-                        <tr>
+                        <tr{% if perms.crm.change_service %} data-directory-row{% endif %}>
+                            {% if directory_actions %}<td class="directory-selection-cell"><input type="checkbox" name="selected" value="{{ service.pk }}" form="directory-bulk-form" aria-label="Select {{ service.name }}"></td>{% endif %}
                             <td>
-                                <div class="user-name">{{ service.name }} {% if service.is_archived %}<span class="status-pill inactive">Archived</span>{% endif %}</div>
+                                <div class="user-name">{% if perms.crm.change_service %}<a href="{% url 'edit_service' service.pk %}" data-directory-link>{{ service.name }}</a>{% else %}{{ service.name }}{% endif %} {% if service.is_archived %}<span class="status-pill inactive">Archived</span>{% endif %}</div>
                                 {% if service.description %}
                                     <div class="user-email">{{ service.description|truncatechars:110 }}</div>
                                 {% endif %}
@@ -60,16 +64,6 @@
                                     {% endif %}
                                 {% endwith %}
                             </td>
-                            <td>
-                                <div class="button-row">
-                                    <a class="button-link" href="{% url 'edit_service' service.id %}">Edit</a>
-                                    {% if perms.crm.change_service %}<form method="post" action="{% if service.is_archived %}{% url 'restore_service' service.id %}{% else %}{% url 'archive_service' service.id %}{% endif %}">{% csrf_token %}<button class="button secondary" type="submit" data-confirm="{% if service.is_archived %}Restore this service for new orders?{% else %}Archive this service? Existing orders will keep their details and prices.{% endif %}">{% if service.is_archived %}Restore{% else %}Archive{% endif %}</button></form>{% endif %}
-                                    <form method="post" action="{% url 'delete_service' service.id %}">
-                                        {% csrf_token %}
-                                        <button class="button danger" type="submit" data-confirm-title="Delete service" data-confirm="Are you sure you wish to delete this service? This cannot be undone.">Delete</button>
-                                    </form>
-                                </div>
-                            </td>
                         </tr>
                     {% endfor %}
                 </tbody>
@@ -81,5 +75,8 @@
             </div>
         {% endif %}
     </div>
+    </div>
 {% include 'crm/_pagination.html' %}
 {% endblock %}
+
+{% block extra_scripts %}<script src="{% static 'crm/js/directory.js' %}" defer></script>{% endblock %}

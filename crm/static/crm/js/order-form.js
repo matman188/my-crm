@@ -20,6 +20,22 @@
     const removed = [];
     const disabledBeforeRemoval = new WeakMap();
     const changed = () => editor.dispatchEvent(new Event("crm:changed", { bubbles: true }));
+    const notesSelector = "textarea[data-order-notes]";
+
+    function sizeNotes(root) {
+        const notes = root.matches(notesSelector) ? [root] : [...root.querySelectorAll(notesSelector)];
+        // Reset to the two-row HTML size before measuring so notes can shrink too.
+        notes.forEach(note => {
+            note.style.height = "";
+            note.style.overflowY = "hidden";
+        });
+        const heights = notes.map(note => note.scrollHeight > note.clientHeight
+            ? note.scrollHeight + note.offsetHeight - note.clientHeight : 0);
+        notes.forEach((note, index) => {
+            if (heights[index] > 0) note.style.height = `${heights[index]}px`;
+        });
+    }
+
     function removalFeedback() {
         const feedback = editor.querySelector("[data-removal-feedback]");
         feedback.hidden = removed.length === 0;
@@ -98,6 +114,7 @@
         populateServices(rows.lastElementChild);
         // A newly added charge is itself the root, rather than a descendant.
         if (rows.lastElementChild.matches("[data-charge]")) populateServices(container);
+        sizeNotes(rows.lastElementChild);
         rows.lastElementChild.querySelector("select, input:not([type=hidden])")?.focus();
         recalculate();
         changed();
@@ -171,6 +188,7 @@
             field(row, "DELETE").checked = false;
             row.hidden = false;
             (disabledBeforeRemoval.get(row) || []).forEach(([input, disabled]) => { input.disabled = disabled; });
+            sizeNotes(row);
             removalFeedback(); recalculate(); changed();
             row.querySelector("select:not(:disabled), input:not(:disabled):not([type=hidden]), textarea:not(:disabled)")?.focus();
         } else if (button.matches("[data-remove-charge], [data-remove-item]")) {
@@ -188,7 +206,11 @@
         if (event.target.name.endsWith("-product")) populateServices(event.target.closest("[data-order-item]"));
         recalculate();
     });
-    editor.addEventListener("input", recalculate);
+    editor.addEventListener("input", event => {
+        if (event.target.matches(notesSelector)) sizeNotes(event.target);
+        recalculate();
+    });
+    window.addEventListener("resize", () => sizeNotes(editor));
 
     editor.querySelectorAll("[data-order-item], [data-charge]").forEach(row => {
         if (deleted(row)) {
@@ -198,5 +220,6 @@
     });
     removalFeedback();
     populateServices(editor);
+    sizeNotes(editor);
     recalculate();
 })();

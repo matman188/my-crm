@@ -520,20 +520,30 @@ class QualityOfLifeTests(TestCase):
         progress = self.client.get(
             reverse("edit_order", args=[order.pk])
         ).content.decode()
-        # A separate unlinked record provides a list Delete button.
-        Customer.objects.create(
-            first_name="Alex",
-            last_name="Other",
-            email="other@example.com",
-            primary_phone="0123",
+        Customer.objects.bulk_create(
+            Customer(
+                first_name="Alex",
+                last_name=f"Customer {index:02d}",
+                email=f"alex-{index}@example.com",
+                primary_phone="0123",
+            )
+            for index in range(26)
         )
         customers = self.client.get(
             reverse("customers"), {"q": "Alex"}
         ).content.decode()
+        orders = self.client.get(
+            reverse("orders"), {"status": "in_progress"}
+        ).content.decode()
         result = subprocess.run(
             [shutil.which("node"), "crm/tests/js/rendered-order.cjs"],
             input=json.dumps(
-                {"draft": draft, "progress": progress, "customers": customers}
+                {
+                    "draft": draft,
+                    "progress": progress,
+                    "customers": customers,
+                    "orders": orders,
+                }
             ),
             text=True,
             capture_output=True,

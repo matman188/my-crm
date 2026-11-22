@@ -20,6 +20,9 @@ from crm.order_workflow import ORDER_ACTIONS, SAVE_LABELS
 from crm.order_queries import WORK_VIEWS
 
 
+ORDER_NOTES_ATTRS = {"rows": 2, "data-order-notes": ""}
+
+
 class CustomerChoiceField(forms.ModelChoiceField):
     @staticmethod
     def label_from_instance(customer):
@@ -163,7 +166,7 @@ class ServiceOrderForm(forms.ModelForm):
         )
         labels = {"payment_status": "Payment status"}
         widgets = {
-            "notes": forms.Textarea(attrs={"rows": 3}),
+            "notes": forms.Textarea(attrs=ORDER_NOTES_ATTRS),
         }
 
 
@@ -234,7 +237,7 @@ class OrderItemForm(forms.ModelForm):
         widgets = {
             "due_date": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}),
             "due_time": forms.TimeInput(format="%H:%M", attrs={"type": "time"}),
-            "notes": forms.Textarea(attrs={"rows": 2}),
+            "notes": forms.Textarea(attrs=ORDER_NOTES_ATTRS),
         }
         labels = {
             "due_date": "Due date",
@@ -288,7 +291,7 @@ class OrderServiceChargeForm(forms.ModelForm):
     class Meta:
         model = OrderServiceCharge
         fields = ("service", "quantity", "notes")
-        widgets = {"notes": forms.Textarea(attrs={"rows": 2})}
+        widgets = {"notes": forms.Textarea(attrs=ORDER_NOTES_ATTRS)}
 
 
 class OrderItemDetailsForm(forms.ModelForm):

@@ -1,5 +1,5 @@
 {% extends "crm/base.html" %}
-{% load contact %}
+{% load contact static %}
 {% block card_class %} card-list{% endblock %}
 
 {% block title %}Customers{% endblock %}
@@ -17,23 +17,26 @@
 
     {% include 'crm/_directory_search.html' with list_url='customers' search_placeholder='Search by name, company, email, or phone' %}
 
+    <div data-directory>
+    {% if existing_customers and directory_actions %}{% include 'crm/_directory_bulk_actions.html' %}{% endif %}
     <div class="data-table-shell">
         {% if existing_customers %}
             <table class="data-table">
                 <thead>
                     <tr>
+                        {% if directory_actions %}{% include 'crm/_directory_select_all.html' %}{% endif %}
                         <th>Customer</th>
                         <th>Company</th>
                         <th>Contact</th>
                         <th>Orders</th>
-                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for customer in existing_customers %}
-                        <tr>
+                        <tr data-directory-row>
+                            {% if directory_actions %}<td class="directory-selection-cell"><input type="checkbox" name="selected" value="{{ customer.pk }}" form="directory-bulk-form" aria-label="Select {{ customer }}"></td>{% endif %}
                             <td>
-                                <div class="user-name">{{ customer.first_name }}{% if customer.last_name %} {{ customer.last_name }}{% endif %}</div>
+                                <div class="user-name"><a href="{% url 'edit_customer' customer.pk %}" data-directory-link>{{ customer }}</a></div>
                                 {% if customer.is_archived %}<span class="role-badge standard">Archived</span>{% endif %}
                             </td>
                             <td>
@@ -64,15 +67,6 @@
                                     {{ customer.order_count }}
                                 {% endif %}
                             </td>
-                            <td>
-                                <div class="button-row">
-                                    <a class="button-link" href="{% url 'edit_customer' customer.id %}">View</a>
-                                    {% if not customer.order_count %}<form method="post" action="{% url 'delete_customer' customer.id %}">
-                                        {% csrf_token %}
-                                        <button class="button danger" type="submit" data-confirm-title="Delete customer" data-confirm="Are you sure you wish to delete this customer? This cannot be undone.">Delete</button>
-                                    </form>{% endif %}
-                                </div>
-                            </td>
                         </tr>
                     {% endfor %}
                 </tbody>
@@ -84,5 +78,8 @@
             </div>
         {% endif %}
     </div>
+    </div>
 {% include 'crm/_pagination.html' %}
 {% endblock %}
+
+{% block extra_scripts %}<script src="{% static 'crm/js/directory.js' %}" defer></script>{% endblock %}

@@ -1,0 +1,14 @@
+{% load l10n %}
+<form method="post" id="directory-bulk-form" class="directory-bulk-actions" data-directory-selection>
+    {% csrf_token %}
+    <input type="hidden" name="scope" value="page">
+    <input type="hidden" name="total" value="{{ page_obj.paginator.count|unlocalize }}">
+    <label for="directory-action">Action</label>
+    <select id="directory-action" name="bulk_action">
+        <option value="">Choose an action</option>
+        {% for action, label in directory_actions.items %}<option value="{{ action }}">{{ label }}</option>{% endfor %}
+    </select>
+    <button class="button" type="submit" data-directory-apply disabled>Apply</button>
+    <span class="meta" role="status" data-directory-count>0 selected</span>
+    <button class="button secondary" type="button" data-directory-remaining hidden></button>
+</form>

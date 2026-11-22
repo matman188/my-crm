@@ -141,7 +141,7 @@
         }
         document.querySelectorAll('form[method="post"]').forEach(form => {
             addNext(form, next || (list ? location.pathname + location.search : ""));
-            if (form.closest("dialog") || !form.querySelector('input:not([type="hidden"]):not([type="submit"]), textarea, select')) return;
+            if (form.matches("[data-directory-selection]") || form.closest("dialog") || !form.querySelector('input:not([type="hidden"]):not([type="submit"]), textarea, select')) return;
             const label = document.createElement("p"); label.className = "save-state"; label.setAttribute("role", "status"); form.prepend(label);
             tracked.set(form, { initial: signature(form), invalid: Boolean(form.querySelector('[aria-invalid="true"], .non-field-errors:not([hidden])')), label });
             ["input", "change", "crm:changed"].forEach(type => form.addEventListener(type, () => { updateState(form); markRequired(form); }));

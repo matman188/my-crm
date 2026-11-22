@@ -19,7 +19,13 @@ async function boot(html, url) {
     w.HTMLFormElement.prototype.requestSubmit = function (submitter) {
         if (this.checkValidity()) this.dispatchEvent(new w.SubmitEvent("submit", { bubbles: true, cancelable: true, submitter }));
     };
-    for (const name of ["workspace", "list-filters", "order-customer", "order-confirmation", "order-form"]) w.eval(fs.readFileSync(path.join(directory, name + ".js"), "utf8"));
+    // jsdom has no layout. Model text rows and borders for the autosize check.
+    Object.defineProperties(w.HTMLTextAreaElement.prototype, {
+        clientHeight: { get() { return this.style.height ? parseFloat(this.style.height) - 2 : this.rows * 20 + 24; } },
+        offsetHeight: { get() { return this.clientHeight + 2; } },
+        scrollHeight: { get() { return Math.max(this.clientHeight, this.value.split("\n").length * 20 + 24); } },
+    });
+    for (const name of ["workspace", "list-filters", "directory", "order-customer", "order-confirmation", "order-form"]) w.eval(fs.readFileSync(path.join(directory, name + ".js"), "utf8"));
     w.document.dispatchEvent(new w.Event("DOMContentLoaded"));
     const editor = w.document.querySelector("[data-order-editor]");
     return { w, editor, q: selector => w.document.querySelector(selector), change(control, value) { control.value = value; control.dispatchEvent(new w.Event("change", { bubbles: true })); } };
@@ -32,6 +38,25 @@ async function boot(html, url) {
     assert.match(q("[data-charge] select").selectedOptions[0].textContent, /12.35 \(captured\)/);
     checks.push("initial clean state and captured-price labels");
 
+    const orderNotes = q('[name="notes"]');
+    const itemNotes = q('[name="items-0-notes"]');
+    const serviceNotes = q('[name="items-0-services-0-notes"]');
+    const extraNotes = q('[name="general-0-notes"]');
+    for (const note of [orderNotes, itemNotes, serviceNotes, extraNotes]) {
+        assert.equal(note.rows, 2);
+        assert.equal(note.style.height, "");
+    }
+    const originalNotes = orderNotes.value;
+    orderNotes.value = "First line\nSecond line\nThird line";
+    orderNotes.dispatchEvent(new w.Event("input", { bubbles: true }));
+    assert.equal(orderNotes.style.height, "86px");
+    orderNotes.value = originalNotes;
+    orderNotes.dispatchEvent(new w.Event("input", { bubbles: true }));
+    assert.equal(orderNotes.style.height, "");
+    itemNotes.value = "First line\nSecond line\nThird line\nFourth line";
+    itemNotes.dispatchEvent(new w.Event("input", { bubbles: true }));
+    checks.push("order notes start with two rows and grow and shrink as edited");
+
     q("[data-duplicate-item]").click();
     const items = [...editor.querySelectorAll("[data-order-item]")];
     assert.equal(items.length, 2);
@@ -40,6 +65,7 @@ async function boot(html, url) {
     assert.equal(items[1].querySelector('[name="items-1-services-INITIAL_FORMS"]').value, "0");
     assert.equal(items[1].querySelector('[name="items-1-services-0-item"]').value, "");
     assert.equal(items[1].querySelector('[name="items-1-services-0-quantity"]').value, "2");
+    assert.equal(items[1].querySelector('[name="items-1-notes"]').style.height, "106px");
     assert.match(items[1].querySelector("[data-unit-price]").textContent, /20.00/);
     assert.equal(w.crmUX.isDirty(editor), true);
     checks.push("duplicate item uses fresh IDs and current prices");
@@ -120,18 +146,60 @@ async function boot(html, url) {
     assert.equal(submitted, null);
     checks.push("confirmed workflow action retains submitter and blocks duplicate submission");
 
+    const orders = await boot(fixtures.orders, "/orders/?status=in_progress");
+    const orderRow = orders.q("[data-directory-row]");
+    const orderLink = orderRow.querySelector("[data-directory-link]");
+    assert.match(orderLink.textContent, /^SO-\d+$/);
+    assert.equal(new URL(orderLink.href).searchParams.get("next"), "/orders/?status=in_progress");
+    let openedOrder = false;
+    orderLink.addEventListener("click", event => { event.preventDefault(); openedOrder = true; });
+    orderRow.querySelector("summary").click();
+    assert.equal(orderRow.querySelector("details").open, true);
+    assert.equal(openedOrder, false);
+    orderRow.querySelector(".money").click();
+    assert.equal(openedOrder, true);
+    checks.push("order rows open the form and leave the item preview operable");
+
     const directory = await boot(fixtures.customers, "/customers/?q=Alex&page=2");
-    const view = directory.q('a[href*="/edit/"]');
-    assert.ok(view.href.includes("next="));
+    const recordLink = directory.q("[data-directory-link]");
+    assert.equal(new URL(recordLink.href).searchParams.get("next"), "/customers/?q=Alex&page=2");
+    let opened = false;
+    recordLink.addEventListener("click", event => { event.preventDefault(); opened = true; });
+    const recordRow = recordLink.closest("tr");
+    recordRow.querySelector('input[name="selected"]').click();
+    assert.equal(opened, false);
+    assert.equal(directory.q("[data-directory-select-page]").indeterminate, true);
+    recordRow.cells[1].click();
+    assert.equal(opened, true);
+
+    const form = directory.q("[data-directory-selection]");
+    const page = directory.q("[data-directory-select-page]");
+    const remaining = directory.q("[data-directory-remaining]");
+    const apply = directory.q("[data-directory-apply]");
+    assert.equal(remaining.hidden, true);
+    page.click();
+    assert.equal(directory.q("[data-directory-count]").textContent, "25 selected");
+    assert.equal(new directory.w.FormData(form).getAll("selected").length, 25);
+    assert.equal(form.elements.namedItem("scope").value, "page");
+    assert.equal(remaining.textContent, "Select remaining 2");
+    assert.equal(remaining.hidden, false);
+    remaining.click();
+    assert.equal(form.elements.namedItem("scope").value, "all");
+    assert.equal(directory.q("[data-directory-count]").textContent, "All 27 matching entries selected");
+    assert.equal(remaining.hidden, true);
+    directory.change(form.elements.namedItem("bulk_action"), "delete");
     let deleted = false;
     directory.w.document.addEventListener("submit", event => { if (!event.defaultPrevented) deleted = true; });
-    const deleteButton = directory.q('button[data-confirm-title="Delete customer"]');
-    deleteButton.form.requestSubmit(deleteButton);
+    form.requestSubmit(apply);
     assert.equal(deleted, false);
     assert.equal(directory.q("[data-workspace-confirm]").open, true);
+    assert.match(directory.q("[data-workspace-confirm-message]").textContent, /Delete all 27 matching entries/);
     directory.q("[data-workspace-cancel]").click();
     assert.equal(deleted, false);
-    checks.push("directory confirmation and return URL preservation");
+    recordRow.querySelector('input[name="selected"]').click();
+    assert.equal(form.elements.namedItem("scope").value, "page");
+    assert.equal(directory.q("[data-directory-count]").textContent, "24 selected");
+    checks.push("directory row navigation, paged selection, and bulk confirmation");
 
     const clean = await boot(fixtures.draft, "/orders/1/edit/");
     clean.q("[data-edit-customer]").click();

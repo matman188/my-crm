@@ -918,6 +918,11 @@ body {
     border: 1px solid var(--border);
 }
 
+.order-editor textarea[data-order-notes] {
+    min-height: 0;
+    resize: none;
+}
+
 .order-editor input:disabled,
 .order-editor select:disabled,
 .order-editor textarea:disabled {
@@ -1151,7 +1156,17 @@ body {
 .list-filter-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
 .list-filter-controls > .form-field { flex: 1 1 160px; max-width: 260px; min-width: 0; }
 .list-filters label { display: block; margin-bottom: 6px; font-size: .9rem; font-weight: 700; }
-.list-filters input, .list-filters select { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: #fff; color: var(--text); font: inherit; }
+.list-filters input, .list-filters select, .directory-bulk-actions select { padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: #fff; color: var(--text); font: inherit; }
+.list-filters input, .list-filters select { width: 100%; }
+.directory-bulk-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 16px; }
+.directory-bulk-actions label { font-weight: 700; }
+.directory-bulk-actions button:disabled { opacity: .5; cursor: default; }
+.directory-selection-cell { width: 1%; white-space: nowrap; cursor: default; }
+.directory-select-page { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+[data-directory] input[type="checkbox"] { margin: 0; accent-color: var(--panel-accent); cursor: pointer; }
+[data-directory-row] { cursor: pointer; }
+[data-directory] .data-table tbody tr.is-selected { background: #e7f0f5; }
+[data-directory-link] { color: var(--panel); }
 @media (max-width: 600px) {
     .list-search-field { flex-basis: 100%; }
     .list-filter-controls > .form-field { max-width: none; flex-basis: calc(50% - 12px); }

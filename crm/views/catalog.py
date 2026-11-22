@@ -1,17 +1,18 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db.models import Count, Prefetch, Q, Value
+from django.db.models import Count, OuterRef, Prefetch, Q, Value
 from django.db.models.functions import Coalesce, Lower
 from django.db.models.deletion import ProtectedError
 from django.http import HttpResponseForbidden
 from django.shortcuts import get_object_or_404, render
 
 from crm.forms import ProductCategoryForm, ProductForm, ServiceForm
-from crm.models import Product, ProductCategory, Service
+from crm.models import OrderServiceCharge, Product, ProductCategory, Service
 
 from .common import has_permission, list_page, return_to_list
+from .directory import apply_directory_action, directory_actions, directory_status
 from django.utils import timezone
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_http_methods, require_POST
 
 
 @login_required
@@ -239,25 +240,14 @@ def delete_product(request, product_id):
 
 
 @login_required
+@require_http_methods(["GET", "HEAD", "POST"])
 def services(request):
     if not has_permission(request.user, "crm.view_service"):
         return HttpResponseForbidden("Only admin users can manage configuration.")
 
     search_query = request.GET.get("q", "").strip()
-    existing_services = Service.objects.prefetch_related(
-        Prefetch(
-            "products",
-            queryset=Product.objects.select_related("category").order_by(
-                Lower(Coalesce("category__name", Value("~no-category~"))),
-                Lower("name"),
-                "id",
-            ),
-        )
-    ).all()
-
-    catalog_status = request.GET.get("status", "active")
-    if catalog_status not in ("active", "archived", "all"):
-        catalog_status = "active"
+    existing_services = Service.objects.all()
+    catalog_status = directory_status(request)
     if catalog_status != "all":
         existing_services = existing_services.filter(
             is_archived=catalog_status == "archived"
@@ -271,6 +261,24 @@ def services(request):
         ).distinct()
 
     existing_services = existing_services.order_by(Lower("name"), "id")
+    actions = directory_actions(request.user, Service, catalog_status)
+    if request.method == "POST":
+        return apply_directory_action(
+            request,
+            existing_services,
+            actions,
+            OrderServiceCharge.objects.filter(service_id=OuterRef("pk")),
+        )
+    existing_services = existing_services.prefetch_related(
+        Prefetch(
+            "products",
+            queryset=Product.objects.select_related("category").order_by(
+                Lower(Coalesce("category__name", Value("~no-category~"))),
+                Lower("name"),
+                "id",
+            ),
+        )
+    )
     return render(
         request,
         "crm/services.html",
@@ -278,6 +286,7 @@ def services(request):
             **list_page(request, existing_services, "existing_services"),
             "catalog_status": catalog_status,
             "search_query": search_query,
+            "directory_actions": actions,
         },
     )
 
