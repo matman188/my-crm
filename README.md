@@ -21,9 +21,10 @@ under **System Settings > Invoicing**, including logo upload and previews using
 unsaved settings. All Python dependencies, including PDF inspection/rendering
 tools, are in `requirements.txt`. Run migrations after updating.
 
-Next milestone: order-linked [invoice design and delivery](docs/invoice-design.md), covering
-the proposed Invoice record, stored PDF, layout/configuration, order actions,
-open correction rules and a checklist for resuming development.
+Order-linked [invoicing](docs/invoice-design.md) is available from the Invoices
+section of a saved order. Generate a numbered invoice in In Progress or Complete,
+then preview or download its PDF. The invoice record stores the issued billing
+details and the app renders PDFs on demand. Email delivery is planned.
 
 The same plan records [simple order-based refunds and reporting](docs/invoice-design.md#simple-refunds-and-reporting-directly-on-orders)
 for later implementation: attached refund entries, Total Refunded and Net Order

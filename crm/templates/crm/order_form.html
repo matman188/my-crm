@@ -25,6 +25,7 @@
         <a class="order-back-link" href="{% if return_to %}{{ return_to }}{% else %}{% url 'orders' %}{% endif %}">Back to orders</a>
     </div>
 </div>
+{% if order.pk and perms.crm.view_serviceorder %}{% include 'crm/_order_invoices.html' %}{% endif %}
 <noscript>
     <p class="non-field-errors">Enable JavaScript to use this form.</p>
 </noscript>
@@ -132,7 +133,7 @@
         </div>
     </dialog>
 </form>
-{% if order.pk and editor.original_status == 'draft' and perms.crm.delete_serviceorder %}
+{% if order.pk and editor.original_status == 'draft' and not editor.invoices and perms.crm.delete_serviceorder %}
 <form id="delete-draft-form" method="post" action="{% url 'delete_order' order.pk %}" hidden>
     {% csrf_token %}
     <input type="hidden" name="revision" value="{{ editor.form.revision.value }}">

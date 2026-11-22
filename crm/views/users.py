@@ -18,6 +18,15 @@ from .common import has_permission, list_page, return_to_list
 from django.views.decorators.http import require_POST
 
 
+def has_work_history(user):
+    return (
+        user.assigned_orders.exists()
+        or user.created_orders.exists()
+        or user.issued_invoices.exists()
+        or user.closed_invoices.exists()
+    )
+
+
 @login_required
 def users(request):
     if not has_permission(request.user, "auth.view_user"):
@@ -36,9 +45,7 @@ def users(request):
 
     page_context = list_page(request, existing_users, "existing_users")
     for user in page_context["existing_users"]:
-        user.has_order_history = (
-            user.assigned_orders.exists() or user.created_orders.exists()
-        )
+        user.has_work_history = has_work_history(user)
         user.access_level_label = get_access_level_label(user)
         user.can_be_managed_by_current_user = can_manage_user_record(request.user, user)
     return render(
@@ -157,14 +164,10 @@ def delete_user(request, user_id):
         messages.error(request, "Superusers cannot be deleted from this screen.")
         return return_to_list(request, "users")
 
-    if (
-        user_to_delete.pk == request.user.pk
-        or user_to_delete.assigned_orders.exists()
-        or user_to_delete.created_orders.exists()
-    ):
+    if user_to_delete.pk == request.user.pk or has_work_history(user_to_delete):
         messages.error(
             request,
-            "This user has order history or is your account. Deactivate staff with order history instead.",
+            "This user has order or invoice history or is your account. Deactivate staff to retain their history.",
         )
         return return_to_list(request, "users")
 
@@ -172,7 +175,8 @@ def delete_user(request, user_id):
         user_to_delete.delete()
     except ProtectedError:
         messages.error(
-            request, "This user has order history. Deactivate the account instead."
+            request,
+            "This user has order or invoice history. Deactivate the account to retain it.",
         )
         return return_to_list(request, "users")
     messages.success(request, f"User '{username}' was deleted.")

@@ -3,7 +3,7 @@ from django.contrib.auth.decorators import login_required, permission_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
-from django.db.models import F, Prefetch, Q, Value
+from django.db.models import Exists, F, OuterRef, Prefetch, Q, Value
 from django.db.models.functions import Concat
 from django.forms import IntegerField
 from django.http import HttpResponseBadRequest, HttpResponseForbidden, JsonResponse
@@ -19,7 +19,15 @@ from crm.forms.orders import (
     OrderEditor,
     OrderFilterForm,
 )
-from crm.models import Customer, OrderItem, OrderServiceCharge, Service, ServiceOrder
+from crm.models import (
+    Customer,
+    Invoice,
+    OrderItem,
+    OrderServiceCharge,
+    Service,
+    ServiceOrder,
+)
+from crm.order_invoices import available_invoice_actions
 from crm.order_queries import (
     WORK_VIEWS,
     deadline_order,
@@ -221,6 +229,9 @@ def _order_form(request, instance=None):
             "service_catalog": catalog,
             "customer_catalog": customer_catalog,
             "customer_notes": customer_notes,
+            "invoice_actions": available_invoice_actions(
+                editor.instance, editor.active_invoice
+            ),
             "page_title": (
                 f"Order {instance.reference}" if instance else "Create service order"
             ),
@@ -302,14 +313,22 @@ def delete_order(request, order_id):
     with transaction.atomic():
         # Claim this exact draft revision before deleting its dependent rows.
         # The write also protects against a concurrent submission on SQLite.
-        claimed = ServiceOrder.objects.filter(
-            pk=order_id,
-            status=ServiceOrder.Status.DRAFT,
-            revision=form.cleaned_data["revision"],
-        ).update(revision=F("revision") + 1)
+        claimed = (
+            ServiceOrder.objects.filter(
+                pk=order_id,
+                status=ServiceOrder.Status.DRAFT,
+                revision=form.cleaned_data["revision"],
+            )
+            .filter(~Exists(Invoice.objects.filter(order_id=OuterRef("pk"))))
+            .update(revision=F("revision") + 1)
+        )
         order = get_object_or_404(ServiceOrder, pk=order_id)
         if order.status != ServiceOrder.Status.DRAFT:
             return HttpResponseForbidden("Only draft orders can be deleted.")
+        if not claimed and order.invoices.exists():
+            return HttpResponseForbidden(
+                "Orders with invoice history cannot be deleted."
+            )
         if not claimed:
             messages.error(request, "The draft changed. Review it before deleting.")
             return redirect(record_url(request, "edit_order", order_id=order.pk))

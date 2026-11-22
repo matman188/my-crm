@@ -1,7 +1,13 @@
 from django.urls import path
 from crm.views.catalog import set_catalog_archive
 from crm.views.users import set_user_active
-from crm.views.invoices import invoice_logo, preview_invoice
+from crm.views.invoices import (
+    invoice_logo,
+    order_invoice_action,
+    order_invoice_pdf,
+    preview_invoice,
+    preview_order_invoice,
+)
 
 from crm.views import (
     archive_customer,
@@ -79,6 +85,21 @@ urlpatterns = [
     path("orders/create/", create_order, name="create_order"),
     path("orders/<int:order_id>/edit/", edit_order, name="edit_order"),
     path("orders/<int:order_id>/delete/", delete_order, name="delete_order"),
+    path(
+        "orders/<int:order_id>/invoice/preview/",
+        preview_order_invoice,
+        name="preview_order_invoice",
+    ),
+    path(
+        "orders/<int:order_id>/invoices/<int:invoice_id>/pdf/",
+        order_invoice_pdf,
+        name="order_invoice_pdf",
+    ),
+    path(
+        "orders/<int:order_id>/invoice/<slug:action>/",
+        order_invoice_action,
+        name="order_invoice_action",
+    ),
     path(
         "orders/customers/<int:customer_id>/save/",
         save_order_customer,

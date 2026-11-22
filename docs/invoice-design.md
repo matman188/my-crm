@@ -1,4 +1,28 @@
-# Next milestone: invoice design and delivery
+# Invoice design and delivery
+
+## Running the order invoice workflow
+
+Migration 0017 adds order-linked invoices. Staff with order access can open a
+saved order and preview an unnumbered PDF. From In Progress or Complete, use
+**Generate invoice** to confirm issuance, then **Preview PDF** or **Download PDF**.
+The PDF preview opens in the browser's viewer, which also has a download action.
+
+The invoice record freezes the customer, charges, currency, business details,
+printed date, template version and the referenced logo. The global invoice record
+sequence supplies the number and the issue-time prefix is retained. PDFs render
+on demand and are sent with `Cache-Control: private, no-store`. Database backups
+should include the historical logo files referenced by the records. No customer
+address or tax calculation is supplied by the current order data model.
+
+Use **Start invoice revision** to enter a reason and return to Draft, adjust the
+order and submit it again. **Replace invoice** issues a new number and marks
+the previous invoice Superseded in the same transaction. **Void invoice** closes
+an invoice while retaining it in history. These correction actions require an
+Unpaid order and confirmation that the invoice has yet to be shared. Agree the
+process for invoices already sent or paid before supporting those corrections.
+Email delivery, refund records and reporting remain future work.
+
+## Original proposal
 
 Recorded: 15 November 2026. Status: settings and sample PDF preview implemented;
 order-linked invoice issuance, storage/history and email remain planned.

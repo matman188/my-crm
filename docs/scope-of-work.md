@@ -397,6 +397,12 @@ the simple order report.
 
 ## 6. Invoices, PDF layout, and email
 
+Order-linked issuance, PDF preview/download, and replacement history now use
+the [implemented invoice workflow](invoice-design.md#running-the-order-invoice-workflow).
+Issued details are stored on the record and the PDF is rendered on demand.
+Email and corrections to invoices already shared or paid are follow-up work.
+The remaining sections preserve the earlier design proposals for reference.
+
 Step 1 is implemented: [System Settings > Invoicing and sample PDF preview](invoice-preview.md).
 It supports saved business settings, logo upload and unsaved-value short/multi-page
 PDF previews using fictional data. It does not issue invoices for real orders.

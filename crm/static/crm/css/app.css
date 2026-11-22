@@ -324,6 +324,8 @@ body {
 .invoice-preview-dialog h2, .invoice-preview-dialog p { margin: 0; }
 .invoice-preview-dialog iframe { width: 100%; flex: 1; min-height: 200px; border: 1px solid var(--border); border-radius: 10px; background: white; }
 .invoice-preview-dialog [data-download-invoice-preview] { align-self: flex-start; }
+.order-invoice-panel { margin-bottom: 16px; }
+.order-invoice-entry { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; margin-top: 12px; border-top: 1px solid var(--border); }
 [data-preview-errors] { white-space: pre-line; }
 .demo-settings { margin-top: 28px; }
 

@@ -1,0 +1,32 @@
+{% extends 'crm/base.html' %}
+
+{% block title %}{{ page_title }}{% endblock %}
+{% block page_title %}{{ page_title }}{% endblock %}
+{% block page_copy %}Order {{ order.reference }}{% endblock %}
+
+{% block content %}
+<section class="panel">
+    <h2>{{ page_title }}</h2>
+    {% if invoice_action == 'generate' %}
+        <p>Issue a numbered invoice for {{ order.customer }} for {{ order.currency }} {{ order.total|floatformat:2 }}.</p>
+    {% elif invoice_action == 'revise' %}
+        <p>Move the order to Draft to edit its billing details. Invoice {{ active_invoice.number }} remains active until the replacement is issued.</p>
+    {% elif invoice_action == 'replace' %}
+        <p>Issue a new invoice for {{ order.currency }} {{ order.total|floatformat:2 }} and mark {{ active_invoice.number }} as superseded.</p>
+        <p>Revision reason: {{ order.invoice_revision_reason }}</p>
+    {% else %}
+        <p>Void invoice {{ active_invoice.number }} and keep it in the order history.</p>
+    {% endif %}
+    <form method="post" class="form-grid">
+        {% csrf_token %}
+        {% if return_to %}<input type="hidden" name="next" value="{{ return_to }}">{% endif %}
+        {{ form.revision }}{{ form.invoice }}{{ form.revision.errors }}{{ form.invoice.errors }}
+        {% if form.reason %}<div class="form-field">{{ form.reason.label_tag }}{{ form.reason }}{{ form.reason.errors }}</div>{% endif %}
+        {% if form.not_shared %}<div>{{ form.not_shared }} {{ form.not_shared.label_tag }}{{ form.not_shared.errors }}</div>{% endif %}
+        <div class="button-row">
+            <button class="button{% if invoice_action == 'void' %} danger{% endif %}" type="submit">{{ page_title }}</button>
+            <a class="button secondary" href="{{ order_url }}">Cancel</a>
+        </div>
+    </form>
+</section>
+{% endblock %}

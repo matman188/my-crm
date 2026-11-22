@@ -1,5 +1,6 @@
-"""Fixed A4 sample renderer. It reads settings only and never issues an invoice."""
+"""Versioned A4 renderer for invoice snapshots and previews."""
 
+from datetime import date
 from decimal import Decimal
 from html import escape
 from io import BytesIO
@@ -89,7 +90,99 @@ def build_sample_invoice(settings, *, logo=None, long=False):
     """Return an ephemeral PDF using fictional order/customer data and current inputs."""
     if logo is None:
         logo = settings.invoice_logo
-    accent = colors.HexColor(settings.invoice_accent)
+    groups = []
+    for index in range(1, (8 if long else 1) + 1):
+        product = (
+            "Sample item with a longer product name to demonstrate wrapping"
+            if long and index % 4 == 0
+            else "Sample product"
+        )
+        finishing = (
+            "Finishing service with additional description to check line wrapping"
+            if long
+            else "Finishing service"
+        )
+        groups.append(
+            {
+                "label": f"ITEM {index:02d} - {product}",
+                "lines": [
+                    {
+                        "description": "Standard service",
+                        "quantity": 2,
+                        "unit_price": "75.00",
+                    },
+                    {"description": finishing, "quantity": 1, "unit_price": "45.00"},
+                ],
+            }
+        )
+    groups.append(
+        {
+            "label": "ORDER-WIDE EXTRAS",
+            "lines": [
+                {
+                    "description": "Express handling",
+                    "quantity": 1,
+                    "unit_price": "50.00",
+                }
+            ],
+        }
+    )
+    snapshot = {
+        "business": invoice_business_details(settings),
+        "issue_date": timezone.localdate(
+            timezone=ZoneInfo(settings.business_timezone)
+        ).isoformat(),
+        "currency": settings.default_currency,
+        "order_reference": "SO-SAMPLE",
+        "bill_to": [
+            "Sample Customer - Sample Business",
+            "10 Example Street, Sample Town",
+            "sample.customer@example.com",
+        ],
+        "groups": groups,
+    }
+    return render_invoice(
+        snapshot, logo=logo, number=f"{settings.invoice_prefix}-PREVIEW", sample=True
+    )
+
+
+def invoice_business_details(settings):
+    return {
+        name: getattr(settings, name)
+        for name in (
+            "company_name",
+            "invoice_address",
+            "invoice_email",
+            "invoice_phone",
+            "invoice_registration_number",
+            "invoice_tax_number",
+            "invoice_accent",
+            "invoice_bank_details",
+            "invoice_payment_instructions",
+            "invoice_note",
+            "invoice_terms",
+        )
+    }
+
+
+def render_invoice(
+    snapshot, *, logo=None, number=None, sample=False, template_version=1
+):
+    if template_version != 1:
+        raise ValueError("This invoice's PDF template is unavailable.")
+    business_details = snapshot["business"]
+    currency = snapshot["currency"]
+    order_reference = snapshot["order_reference"]
+    issue_date = date.fromisoformat(snapshot["issue_date"])
+    preview = sample or number is None
+    document_title = (
+        "Sample invoice preview"
+        if sample
+        else f"Invoice preview for {order_reference}"
+        if preview
+        else f"Invoice {number}"
+    )
+    accent = colors.HexColor(business_details["invoice_accent"])
     ink = colors.HexColor("#203340")
     muted = colors.HexColor("#647782")
     light = colors.HexColor("#f1f5f7")
@@ -176,8 +269,6 @@ def build_sample_invoice(settings, *, logo=None, long=False):
     def p(value, style="body"):
         return Paragraph(_text(value), styles[style])
 
-    date = timezone.localdate(timezone=ZoneInfo(settings.business_timezone))
-
     def money(amount):
         return f"{amount:,.2f}"
 
@@ -186,28 +277,39 @@ def build_sample_invoice(settings, *, logo=None, long=False):
     image = _logo_flowable(logo)
     if image:
         business.extend([image, Spacer(1, 7)])
-    business.append(p(settings.company_name, "name"))
-    if settings.invoice_address:
-        business.append(p(settings.invoice_address, "small"))
+    business.append(p(business_details["company_name"], "name"))
+    if business_details["invoice_address"]:
+        business.append(p(business_details["invoice_address"], "small"))
     contacts = " | ".join(
-        value for value in (settings.invoice_email, settings.invoice_phone) if value
+        business_details[name]
+        for name in ("invoice_email", "invoice_phone")
+        if business_details[name]
     )
     if contacts:
         business.append(p(contacts, "small"))
     for label, value in (
-        ("Registration", settings.invoice_registration_number),
-        ("Tax number", settings.invoice_tax_number),
+        ("Registration", business_details["invoice_registration_number"]),
+        ("Tax number", business_details["invoice_tax_number"]),
     ):
         if value:
             business.append(p(f"{label}: {value}", "small"))
-    identity = [
-        p("INVOICE", "title"),
-        p("PREVIEW - FICTIONAL SAMPLE", "right"),
-        Spacer(1, 10),
-        p(f"{settings.invoice_prefix}-PREVIEW", "right"),
-        p(f"Issue date: {date:%d %b %Y}", "right"),
-        p(f"Currency: {settings.default_currency}", "right"),
-    ]
+    identity = [p("INVOICE", "title")]
+    if preview:
+        identity.append(
+            p("PREVIEW - FICTIONAL SAMPLE" if sample else "PREVIEW", "right")
+        )
+    identity.append(Spacer(1, 10))
+    if number:
+        identity.append(p(number, "right"))
+    identity.extend(
+        [
+            p(
+                f"{'Preview date' if preview and not sample else 'Issue date'}: {issue_date:%d %b %Y}",
+                "right",
+            ),
+            p(f"Currency: {currency}", "right"),
+        ]
+    )
     header = Table([[business, identity]], colWidths=[106 * mm, 64 * mm])
     header.setStyle(
         TableStyle(
@@ -226,13 +328,14 @@ def build_sample_invoice(settings, *, logo=None, long=False):
             [
                 [
                     p("BILL TO", "label"),
-                    p("Sample Customer - Sample Business"),
-                    p("10 Example Street, Sample Town", "small"),
-                    p("sample.customer@example.com", "small"),
+                    *[
+                        p(line, "body" if index == 0 else "small")
+                        for index, line in enumerate(snapshot["bill_to"])
+                    ],
                 ],
                 [
                     p("SERVICE ORDER", "label"),
-                    p("SO-SAMPLE"),
+                    p(order_reference),
                 ],
             ]
         ],
@@ -269,39 +372,24 @@ def build_sample_invoice(settings, *, logo=None, long=False):
         ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
     ]
     total = Decimal("0")
-    groups = 8 if long else 1
-    for index in range(1, groups + 1):
+    for group in snapshot["groups"]:
         group_row = len(rows)
-        product = (
-            "Sample item with a longer product name to demonstrate wrapping"
-            if long and index % 4 == 0
-            else "Sample product"
-        )
-        rows.append([p(f"ITEM {index:02d} - {product}", "group"), "", "", ""])
+        rows.append([p(group["label"], "group"), "", "", ""])
         rules.extend(
             [
                 ("SPAN", (0, group_row), (-1, group_row)),
                 ("BACKGROUND", (0, group_row), (-1, group_row), light),
-                ("NOSPLIT", (0, group_row), (-1, group_row + 2)),
+                ("NOSPLIT", (0, group_row), (-1, group_row + 1)),
             ]
         )
-        for name, quantity, price in (
-            ("Standard service", 2, Decimal("75.00")),
-            (
-                (
-                    "Finishing service with additional description to check line wrapping"
-                    if long
-                    else "Finishing service"
-                ),
-                1,
-                Decimal("45.00"),
-            ),
-        ):
+        for line in group["lines"]:
+            quantity = line["quantity"]
+            price = Decimal(line["unit_price"])
             amount = price * quantity
             total += amount
             rows.append(
                 [
-                    p(name),
+                    p(line["description"]),
                     p(quantity, "number"),
                     p(money(price), "number"),
                     p(money(amount), "number"),
@@ -310,24 +398,6 @@ def build_sample_invoice(settings, *, logo=None, long=False):
             rules.append(
                 ("LINEBELOW", (0, len(rows) - 1), (-1, len(rows) - 1), 0.4, border)
             )
-    extra_row = len(rows)
-    rows.append([p("ORDER-WIDE EXTRAS", "group"), "", "", ""])
-    rows.append(
-        [
-            p("Express handling"),
-            p(1, "number"),
-            p("50.00", "number"),
-            p("50.00", "number"),
-        ]
-    )
-    rules.extend(
-        [
-            ("SPAN", (0, extra_row), (-1, extra_row)),
-            ("BACKGROUND", (0, extra_row), (-1, extra_row), light),
-            ("NOSPLIT", (0, extra_row), (-1, extra_row + 1)),
-        ]
-    )
-    total += Decimal("50.00")
     charges = LongTable(
         rows,
         colWidths=[94 * mm, 16 * mm, 30 * mm, 30 * mm],
@@ -340,7 +410,7 @@ def build_sample_invoice(settings, *, logo=None, long=False):
         [
             [p("Subtotal", "right"), p(money(total), "number")],
             [
-                p(f"TOTAL {settings.default_currency}", "total"),
+                p(f"TOTAL {currency}", "total"),
                 p(money(total), "total"),
             ],
         ],
@@ -359,12 +429,12 @@ def build_sample_invoice(settings, *, logo=None, long=False):
     story.append(totals)
     for blocks in (
         (
-            ("BANKING DETAILS", settings.invoice_bank_details),
-            ("PAYMENT INSTRUCTIONS", settings.invoice_payment_instructions),
+            ("BANKING DETAILS", business_details["invoice_bank_details"]),
+            ("PAYMENT INSTRUCTIONS", business_details["invoice_payment_instructions"]),
         ),
         (
-            ("INVOICE NOTE", settings.invoice_note),
-            ("TERMS AND DISCLAIMER", settings.invoice_terms),
+            ("INVOICE NOTE", business_details["invoice_note"]),
+            ("TERMS AND DISCLAIMER", business_details["invoice_terms"]),
         ),
     ):
         cells = [
@@ -394,29 +464,33 @@ def build_sample_invoice(settings, *, logo=None, long=False):
             story.extend([Spacer(1, 12), footer])
 
     def page(canvas, doc):
-        canvas.saveState()
-        canvas.setTitle("Sample invoice preview")
-        canvas.setAuthor(settings.company_name)
-        canvas.setFillColor(colors.HexColor("#edf0f2"))
-        canvas.translate(A4[0] / 2, A4[1] / 2)
-        canvas.rotate(40)
-        canvas.setFont("InvoiceBold", 64)
-        canvas.drawCentredString(0, 0, "PREVIEW")
-        canvas.restoreState()
+        canvas.setTitle(document_title)
+        canvas.setAuthor(business_details["company_name"])
+        if preview:
+            canvas.saveState()
+            canvas.setFillColor(colors.HexColor("#edf0f2"))
+            canvas.translate(A4[0] / 2, A4[1] / 2)
+            canvas.rotate(40)
+            canvas.setFont("InvoiceBold", 64)
+            canvas.drawCentredString(0, 0, "PREVIEW")
+            canvas.restoreState()
         canvas.saveState()
         canvas.setFont("Invoice", 8)
         canvas.setFillColor(muted)
         if doc.page > 1:
-            company = settings.company_name
+            company = business_details["company_name"]
             while pdfmetrics.stringWidth(company, "Invoice", 8) > width - 140:
                 company = company[:-5] + "..."
             canvas.drawString(20 * mm, A4[1] - 13 * mm, company)
-            canvas.drawRightString(
-                A4[0] - 20 * mm, A4[1] - 13 * mm, "Sample invoice preview"
-            )
+            canvas.drawRightString(A4[0] - 20 * mm, A4[1] - 13 * mm, document_title)
         canvas.setStrokeColor(border)
         canvas.line(20 * mm, 17 * mm, A4[0] - 20 * mm, 17 * mm)
-        canvas.drawString(20 * mm, 12 * mm, "Sample only - not issued")
+        footer_label = (
+            "Sample only - not issued"
+            if sample
+            else ("Preview - not issued" if preview else number)
+        )
+        canvas.drawString(20 * mm, 12 * mm, footer_label)
         canvas.drawRightString(A4[0] - 20 * mm, 12 * mm, f"Page {doc.page}")
         canvas.restoreState()
 

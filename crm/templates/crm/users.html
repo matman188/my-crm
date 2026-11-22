@@ -60,7 +60,7 @@
                                         <a class="button-link" href="{% url 'change_user_password' user.id %}">Change Password</a>
                                     {% endif %}
                                     {% if user.can_be_managed_by_current_user and not user.is_superuser and user.pk != request.user.pk %}<form method="post" action="{% if user.is_active %}{% url 'deactivate_user' user.pk %}{% else %}{% url 'reactivate_user' user.pk %}{% endif %}">{% csrf_token %}<button class="button secondary" type="submit" data-confirm="{% if user.is_active %}Deactivate this user? Their order history will be retained and they will no longer be able to sign in.{% else %}Reactivate this user so they can sign in again?{% endif %}">{% if user.is_active %}Deactivate{% else %}Reactivate{% endif %}</button></form>{% endif %}
-                                    {% if user.is_superuser or user.has_order_history or user.pk == request.user.pk %}
+                                    {% if user.is_superuser or user.has_work_history or user.pk == request.user.pk %}
                                         <span class="meta">Delete disabled</span>
                                     {% elif not user.can_be_managed_by_current_user %}
                                         <span class="meta">Managed by System Admin</span>

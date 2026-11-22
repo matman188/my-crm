@@ -8,6 +8,7 @@ from django.forms import BaseInlineFormSet, inlineformset_factory
 from crm.forms.customers import CustomerForm
 from crm.models import (
     Customer,
+    Invoice,
     OrderItem,
     Product,
     OrderServiceCharge,
@@ -64,13 +65,23 @@ class ServiceOrderForm(forms.ModelForm):
     )
     revision = forms.IntegerField(min_value=1, widget=forms.HiddenInput, required=False)
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, active_invoice=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.locked = bool(
             self.instance.pk and self.instance.status != ServiceOrder.Status.DRAFT
         )
         self.original_status = self.instance.status
         self.actions = ORDER_ACTIONS[self.original_status]
+        if active_invoice:
+            self.actions = tuple(
+                action
+                for action in self.actions
+                if action["name"] != "cancel"
+                and (
+                    action["name"] != "return_to_draft"
+                    or self.instance.invoice_revision_reason
+                )
+            )
         self.action = self.data.get("action", "save") if self.is_bound else "save"
         selected_action = next(
             (action for action in self.actions if action["name"] == self.action), None
@@ -365,7 +376,26 @@ class OrderEditor:
             self.instance.pk and self.original_status == ServiceOrder.Status.IN_PROGRESS
         )
         self.detail_forms = []
-        self.form = ServiceOrderForm(data, instance=self.instance)
+        self.invoices = (
+            list(
+                self.instance.invoices.select_related(
+                    "issued_by", "closed_by", "replaces"
+                ).defer("replaces__snapshot")
+            )
+            if self.instance.pk
+            else []
+        )
+        self.active_invoice = next(
+            (
+                invoice
+                for invoice in self.invoices
+                if invoice.status == Invoice.Status.ISSUED
+            ),
+            None,
+        )
+        self.form = ServiceOrderForm(
+            data, instance=self.instance, active_invoice=self.active_invoice
+        )
         self.actions = self.form.actions
         self.save_label = SAVE_LABELS[self.original_status]
         self.new_customer = bool(
@@ -500,6 +530,10 @@ class OrderEditor:
                 )
         if order.pk:
             revision = self.form.cleaned_data["revision"]
+            if revision != order.revision:
+                raise OrderConflict(
+                    "This order changed while you were editing. Reload it before saving again."
+                )
             updated = ServiceOrder.objects.filter(
                 pk=order.pk, revision=revision, status=self.original_status
             ).update(revision=F("revision") + 1)

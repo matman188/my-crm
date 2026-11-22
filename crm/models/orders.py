@@ -42,6 +42,7 @@ class ServiceOrder(models.Model):
     )
     currency = models.CharField(max_length=3)
     notes = models.TextField(blank=True)
+    invoice_revision_reason = models.CharField(max_length=500, blank=True)
     revision = models.PositiveIntegerField(default=1)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

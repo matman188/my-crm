@@ -3,7 +3,7 @@
     {% for action in editor.actions %}<button class="button {{ action.style }}" type="submit" name="action" value="{{ action.name }}" form="order-editor" data-confirm="{{ action.confirmation }}">{{ action.label }}</button>{% endfor %}
     {% if editor.original_status == 'draft' %}
         {% if order.pk %}
-            {% if perms.crm.delete_serviceorder %}<button class="button danger" type="submit" name="action" value="delete_draft" form="delete-draft-form" data-delete-draft data-confirm="Are you sure you wish to delete this draft and its items? This cannot be undone.">Delete draft</button>{% endif %}
+            {% if perms.crm.delete_serviceorder and not editor.invoices %}<button class="button danger" type="submit" name="action" value="delete_draft" form="delete-draft-form" data-delete-draft data-confirm="Are you sure you wish to delete this draft and its items? This cannot be undone.">Delete draft</button>{% endif %}
         {% else %}
             <a class="button-link order-discard-link" href="{% if return_to %}{{ return_to }}{% else %}{% url 'orders' %}{% endif %}" data-confirm="Are you sure you wish to discard this unsaved order?">Discard</a>
         {% endif %}

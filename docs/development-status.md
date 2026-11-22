@@ -5,6 +5,12 @@ Updated: 15 November 2026
 The [scope of work](scope-of-work.md) describes the intended complete workflow.
 This file records what is implemented.
 
+22 November 2026 update. Order-linked issuance, immutable invoice snapshots,
+invoice history and on-demand PDF preview/download are implemented in migration
+0017. The [invoice workflow](invoice-design.md#running-the-order-invoice-workflow)
+describes the current behavior. Earlier entries document the status at their
+respective milestones.
+
 ## Service orders: implemented
 
 Open **Orders** in the sidebar, then **Create order**.
