@@ -2,7 +2,7 @@
 <section class="panel order-invoice-panel" aria-labelledby="order-invoices-heading">
     <h3 id="order-invoices-heading">Invoices</h3>
     {% if order.invoice_revision_reason %}
-        <p>Revision in progress. Invoice {{ editor.active_invoice.number }} remains active until a replacement is issued.</p>
+        <p>Correction in progress. Invoice {{ editor.active_invoice.number }} remains active until the corrected invoice is issued.</p>
     {% endif %}
     {% if editor.active_invoice and order.payment_status != 'unpaid' %}
         <p class="meta">Review the payment or refund before correcting this invoice.</p>
@@ -11,8 +11,8 @@
         {% if order.status != 'cancelled' and not editor.active_invoice or order.invoice_revision_reason %}
             <a class="button secondary" href="{% url 'preview_order_invoice' order.pk %}" target="_blank" rel="noopener">Preview unissued PDF</a>
         {% endif %}
-        {% for action in invoice_actions %}
-            <a class="{% if action == 'generate' or action == 'replace' %}button-link{% else %}button secondary{% endif %}" href="{% url 'order_invoice_action' order.pk action %}{% if return_to %}?next={{ return_to|urlencode:'' }}{% endif %}">{% if action == 'generate' %}Generate invoice{% elif action == 'revise' %}Start invoice revision{% elif action == 'replace' %}Replace invoice{% else %}Void invoice{% endif %}</a>
+        {% for action, label in invoice_actions %}
+            <a class="{% if action == 'void' %}button secondary{% else %}button-link{% endif %}" href="{% url 'order_invoice_action' order.pk action %}{% if return_to %}?next={{ return_to|urlencode:'' }}{% endif %}">{{ label }}</a>
         {% endfor %}
     </div>
     {% for invoice in editor.invoices %}
@@ -20,9 +20,12 @@
         <div class="order-invoice-entry">
             <div>
                 <strong>{{ invoice.number }}</strong>
-                <span class="role-badge">{{ invoice.get_status_display }}</span>
-                <div class="meta">Issued {{ invoice.snapshot.issue_date }} by {{ invoice.issued_by.get_username }}{% if invoice.replaces %} · Replaces {{ invoice.replaces.number }}{% endif %}</div>
-                {% if invoice.closed_at %}<div class="meta">{{ invoice.get_status_display }} {{ invoice.closed_at|date:'Y-m-d H:i T' }} by {{ invoice.closed_by.get_username }} · {{ invoice.closure_reason }}</div>{% endif %}
+                <span class="role-badge invoice-status invoice-status-{{ invoice.status }}">
+                    <span class="invoice-status-icon" aria-hidden="true">{% if invoice.status == 'issued' %}✓{% elif invoice.status == 'void' %}×{% elif invoice.status == 'superseded' %}↪{% endif %}</span>
+                    {% if invoice.status == 'superseded' %}Replaced{% if invoice.replacement %} by {{ invoice.replacement.number }}{% endif %}{% else %}{{ invoice.get_status_display }}{% endif %}
+                </span>
+                <div class="meta">Issued {{ invoice.issued_at|date:'Y-m-d H:i T' }} by {{ invoice.issued_by.get_username }}{% if invoice.replaces %} · Replaces {{ invoice.replaces.number }}{% endif %}</div>
+                {% if invoice.closed_at %}<div class="meta">{% if invoice.status == 'superseded' %}Replaced{% else %}{{ invoice.get_status_display }}{% endif %} {{ invoice.closed_at|date:'Y-m-d H:i T' }} by {{ invoice.closed_by.get_username }} · {{ invoice.closure_reason }}</div>{% endif %}
             </div>
             <div class="button-row">
                 <a class="button secondary" href="{{ pdf_url }}" target="_blank" rel="noopener" aria-label="Preview PDF for {{ invoice.number }}">Preview PDF</a>

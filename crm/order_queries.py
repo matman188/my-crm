@@ -1,7 +1,5 @@
 """Shared work-queue and dashboard rules. No order state is derived or changed."""
 
-from zoneinfo import ZoneInfo
-
 from django.db.models import (
     BooleanField,
     Case,
@@ -33,7 +31,7 @@ WORK_VIEWS = (
 
 def with_deadlines(queryset, now=None):
     local = timezone.localtime(
-        now or timezone.now(), ZoneInfo(SystemSettings.get_solo().business_timezone)
+        now or timezone.now(), SystemSettings.get_solo().business_zone
     )
     items = OrderItem.objects.filter(order_id=OuterRef("pk"))
     earliest = items.order_by("due_date", F("due_time").asc(nulls_last=True), "pk")

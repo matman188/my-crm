@@ -15,6 +15,7 @@ from crm.forms.settings import InvoiceSettingsForm
 from crm.invoice_pdf import build_sample_invoice, render_invoice
 from crm.models import Invoice, ServiceOrder, SystemSettings
 from crm.order_invoices import (
+    INVOICE_ACTION_LABELS,
     INVOICE_STAGES,
     InvoiceConflict,
     apply_invoice_action,
@@ -93,19 +94,11 @@ class InvoiceActionForm(forms.Form):
             del self.fields["not_shared"]
 
 
-ACTION_LABELS = {
-    "generate": "Generate invoice",
-    "revise": "Start invoice revision",
-    "replace": "Replace invoice",
-    "void": "Void invoice",
-}
-
-
 @login_required
 @permission_required("crm.view_serviceorder", raise_exception=True)
 @require_http_methods(["GET", "POST"])
 def order_invoice_action(request, order_id, action):
-    if action not in ACTION_LABELS:
+    if action not in INVOICE_ACTION_LABELS:
         raise Http404
     if action in ("revise", "void") and not request.user.has_perm(
         "crm.change_serviceorder"
@@ -144,8 +137,8 @@ def order_invoice_action(request, order_id, action):
         else:
             message = {
                 "generate": f"Invoice {invoice.number} is ready to preview or download.",
-                "revise": f"Edit and submit the order to replace invoice {invoice.number}.",
-                "replace": f"Replacement invoice {invoice.number} is ready to preview or download.",
+                "revise": f"Edit and submit the order to issue a correction for invoice {invoice.number}.",
+                "replace": f"Corrected invoice {invoice.number} is ready to preview or download.",
                 "void": f"Invoice {invoice.number} was voided.",
             }[action]
             messages.success(request, message)
@@ -159,7 +152,7 @@ def order_invoice_action(request, order_id, action):
             "order_url": order_url,
             "form": form,
             "invoice_action": action,
-            "page_title": ACTION_LABELS[action],
+            "page_title": INVOICE_ACTION_LABELS[action],
         },
     )
 

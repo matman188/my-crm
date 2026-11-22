@@ -36,16 +36,45 @@
         <thead><tr><th>Order</th><th>Customer</th><th>Status</th><th>Collected</th><th>Payment status</th><th>Assigned To</th><th>Items / deadlines</th><th>Total</th></tr></thead>
         <tbody>
         {% for order in page_obj %}
+            {% with form_id=order.reference|add:'-workflow' %}
             <tr{% if perms.crm.change_serviceorder %} data-directory-row{% endif %}>
                 <td><strong>{% if perms.crm.change_serviceorder %}<a href="{% url 'edit_order' order.pk %}" data-directory-link>{{ order.reference }}</a>{% else %}{{ order.reference }}{% endif %}</strong><div class="meta">{{ order.created_at|date:'d M Y' }}</div>{% if order.is_overdue %}<span class="urgency overdue">Overdue</span>{% elif order.is_due_today %}<span class="urgency due-today">Due today</span>{% endif %}</td>
                 <td>{{ order.customer }}{% if order.customer.company %}<div class="meta">{{ order.customer.company }}</div>{% endif %}</td>
                 <td><span class="role-badge order-state order-state-{{ order.status }}">{{ order.get_status_display }}</span></td>
-                <td>{{ order.collected|yesno:'Yes,No' }}</td>
-                <td><span class="role-badge order-payment-{{ order.payment_status }}">{{ order.get_payment_status_display }}</span></td>
-                <td>{% if order.assigned_to %}{{ order.assigned_to.get_full_name|default:order.assigned_to.username }}{% else %}Unassigned{% endif %}</td>
+                <td>
+                    {% if perms.crm.change_serviceorder and order.status == 'complete' %}
+                        <select class="order-list-select" name="collected" form="{{ form_id }}" aria-label="Collected for {{ order.reference }}">
+                            <option value="false"{% if not order.collected %} selected{% endif %}>No</option>
+                            <option value="true"{% if order.collected %} selected{% endif %}>Yes</option>
+                        </select>
+                    {% else %}{{ order.collected|yesno:'Yes,No' }}{% endif %}
+                </td>
+                <td>
+                    {% if perms.crm.change_serviceorder and order.status in quick_edit_stages %}
+                        <select class="order-list-select" name="payment_status" form="{{ form_id }}" aria-label="Payment status for {{ order.reference }}">
+                            {% for value, label in quick_edit_payment_choices %}<option value="{{ value }}"{% if order.payment_status == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                        </select>
+                    {% else %}<span class="role-badge order-payment-{{ order.payment_status }}">{{ order.get_payment_status_display }}</span>{% endif %}
+                </td>
+                <td>
+                    {% if perms.crm.change_serviceorder and order.status in quick_edit_stages %}
+                        <form method="post" action="{% url 'update_order_workflow' order.pk %}" id="{{ form_id }}" class="order-list-edit" data-order-list-edit>
+                            {% csrf_token %}
+                            <input type="hidden" name="revision" value="{{ order.revision }}">
+                            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                            <select class="order-list-select" name="assigned_to" aria-label="Assigned to for {{ order.reference }}">
+                                <option value=""{% if not order.assigned_to_id %} selected{% endif %}{% if order.status == 'complete' %} disabled{% endif %}>Unassigned</option>
+                                {% if order.assigned_to and not order.assigned_to.is_active %}<option value="{{ order.assigned_to_id }}" selected>{{ order.assigned_to.get_full_name|default:order.assigned_to.username }} (Inactive)</option>{% endif %}
+                                {% for pk, name in quick_edit_assignees %}<option value="{{ pk }}"{% if order.assigned_to_id == pk %} selected{% endif %}>{{ name }}</option>{% endfor %}
+                            </select>
+                            <button class="button secondary order-list-save" type="submit" data-order-row-save aria-label="Save changes to {{ order.reference }}">Save</button>
+                        </form>
+                    {% elif order.assigned_to %}{{ order.assigned_to.get_full_name|default:order.assigned_to.username }}{% else %}Unassigned{% endif %}
+                </td>
                 <td>{% if order.next_due_date %}<strong>{{ order.next_due_date|date:'d M Y' }}{% if order.next_due_time %} · {{ order.next_due_time|time:'H:i' }}{% endif %}</strong>{% endif %}<details class="order-item-preview"><summary>{{ order.items.all|length }} item{{ order.items.all|length|pluralize }}</summary>{% for item in order.items.all %}<div>{{ item.product.name }}<div class="meta">Due {{ item.due_date|date:'d M Y' }}{% if item.due_time %} at {{ item.due_time|time:'H:i' }}{% endif %}</div></div>{% endfor %}</details></td>
                 <td class="money">{{ order.currency }} {{ order.total|floatformat:2 }}</td>
             </tr>
+            {% endwith %}
         {% empty %}
             <tr><td colspan="8" class="empty-state">{% if has_filters %}No orders match your search.{% else %}No orders yet. Create an order to capture your first job.{% endif %}</td></tr>
         {% endfor %}

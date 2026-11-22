@@ -18,6 +18,7 @@ class Invoice(models.Model):
     )
     issued_at = models.DateTimeField()
     number_prefix = models.CharField(max_length=12)
+    number_date = models.DateField(null=True, blank=True, editable=False)
     snapshot = models.JSONField()
     logo = models.ImageField(upload_to="invoice_logos/", blank=True)
     template_version = models.PositiveSmallIntegerField(default=1)
@@ -53,7 +54,11 @@ class Invoice(models.Model):
 
     @property
     def number(self):
-        return f"{self.number_prefix}-{self.pk:06d}"
+        sequence = f"{self.pk:06d}"
+        if self.number_date is None:
+            return f"{self.number_prefix}-{sequence}"
+        date_segment = self.number_date.isoformat().replace("-", "")
+        return f"{self.number_prefix}-{date_segment}-{sequence}"
 
     def __str__(self):
         return self.number

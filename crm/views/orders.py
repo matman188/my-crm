@@ -9,15 +9,19 @@ from django.forms import IntegerField
 from django.http import HttpResponseBadRequest, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from crm.forms.customers import CustomerForm
 from crm.forms.orders import (
+    AssignedToChoiceField,
     CustomerChoiceField,
     DeleteDraftForm,
     OrderConflict,
     OrderEditor,
     OrderFilterForm,
+    OrderWorkflowForm,
+    order_assignees,
 )
 from crm.models import (
     Customer,
@@ -27,7 +31,7 @@ from crm.models import (
     Service,
     ServiceOrder,
 )
-from crm.order_invoices import available_invoice_actions
+from crm.order_invoices import INVOICE_ACTION_LABELS, available_invoice_actions
 from crm.order_queries import (
     WORK_VIEWS,
     deadline_order,
@@ -35,6 +39,7 @@ from crm.order_queries import (
     work_condition,
     work_counts,
 )
+from crm.order_workflow import ASSIGNMENT_AND_PAYMENT_STAGES, WORKFLOW_FIELD_STAGES
 from .common import record_url, return_to_list
 
 
@@ -148,6 +153,14 @@ def orders(request):
         )
     pagination_query = request.GET.copy()
     pagination_query.pop("page", None)
+    quick_edit_assignees = (
+        [
+            (user.pk, AssignedToChoiceField.label_from_instance(user))
+            for user in order_assignees()
+        ]
+        if request.user.has_perm("crm.change_serviceorder")
+        else []
+    )
     return render(
         request,
         "crm/orders.html",
@@ -159,6 +172,9 @@ def orders(request):
             "filter_query": pagination_query.urlencode(),
             "has_filters": any(pagination_query.values()),
             "quick_views": quick_views,
+            "quick_edit_stages": ASSIGNMENT_AND_PAYMENT_STAGES,
+            "quick_edit_assignees": quick_edit_assignees,
+            "quick_edit_payment_choices": ServiceOrder.PaymentStatus.choices,
         },
     )
 
@@ -229,9 +245,12 @@ def _order_form(request, instance=None):
             "service_catalog": catalog,
             "customer_catalog": customer_catalog,
             "customer_notes": customer_notes,
-            "invoice_actions": available_invoice_actions(
-                editor.instance, editor.active_invoice
-            ),
+            "invoice_actions": [
+                (action, INVOICE_ACTION_LABELS[action])
+                for action in available_invoice_actions(
+                    editor.instance, editor.active_invoice
+                )
+            ],
             "page_title": (
                 f"Order {instance.reference}" if instance else "Create service order"
             ),
@@ -301,6 +320,69 @@ def save_order_customer(request, customer_id, order_id=None):
 @permission_required("crm.change_serviceorder", raise_exception=True)
 def edit_order(request, order_id):
     return _order_form(request, get_object_or_404(ServiceOrder, pk=order_id))
+
+
+@login_required
+@permission_required(
+    ("crm.view_serviceorder", "crm.change_serviceorder"), raise_exception=True
+)
+@require_POST
+def update_order_workflow(request, order_id):
+    order = get_object_or_404(ServiceOrder, pk=order_id)
+    if order.status not in ASSIGNMENT_AND_PAYMENT_STAGES:
+        messages.error(
+            request, "Quick edits are available for In Progress and Complete orders."
+        )
+        return return_to_list(request, "orders")
+
+    data = request.POST.copy()
+    for name, initial in {
+        "assigned_to": order.assigned_to_id or "",
+        "collected": str(order.collected).lower(),
+        "payment_status": order.payment_status,
+    }.items():
+        if name not in data:
+            data[name] = initial
+    if order.status in WORKFLOW_FIELD_STAGES["collected"] and data["collected"] not in (
+        "true",
+        "false",
+    ):
+        messages.error(
+            request, f"Choose Yes or No for Collected on order {order.reference}."
+        )
+        return return_to_list(request, "orders")
+    form = OrderWorkflowForm(data, instance=order)
+    if not form.is_valid():
+        for errors in form.errors.values():
+            messages.error(
+                request,
+                f"Order {order.reference} could not be updated. {' '.join(errors)}",
+            )
+        return return_to_list(request, "orders")
+
+    revision = form.cleaned_data["revision"]
+    changes = {
+        name: form.cleaned_data[name]
+        for name in form.changed_data
+        if name in WORKFLOW_FIELD_STAGES
+    }
+    matches_revision = revision == order.revision
+    if matches_revision and changes:
+        matches_revision = bool(
+            ServiceOrder.objects.filter(
+                pk=order.pk,
+                revision=revision,
+                status=order.status,
+            ).update(**changes, revision=F("revision") + 1, updated_at=timezone.now())
+        )
+    if not matches_revision:
+        messages.error(
+            request,
+            f"Order {order.reference} changed. Review the latest values before saving again.",
+        )
+    elif changes:
+        messages.success(request, f"Order {order.reference} was updated.")
+    return return_to_list(request, "orders")
 
 
 @login_required

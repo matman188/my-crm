@@ -8,16 +8,19 @@ saved order and preview an unnumbered PDF. From In Progress or Complete, use
 The PDF preview opens in the browser's viewer, which also has a download action.
 
 The invoice record freezes the customer, charges, currency, business details,
-printed date, template version and the referenced logo. The global invoice record
-sequence supplies the number and the issue-time prefix is retained. PDFs render
+printed date, template version and the referenced logo. New numbers use the
+configured prefix, company-local issue date and global invoice sequence, for
+example `INV-20261122-000004`. The sequence continues across dates. Existing
+invoices keep their original numbers. PDFs render
 on demand and are sent with `Cache-Control: private, no-store`. Database backups
 should include the historical logo files referenced by the records. No customer
 address or tax calculation is supplied by the current order data model.
 
-Use **Start invoice revision** to enter a reason and return to Draft, adjust the
-order and submit it again. **Replace invoice** issues a new number and marks
-the previous invoice Superseded in the same transaction. **Void invoice** closes
-an invoice while retaining it in history. These correction actions require an
+Use **Correct invoice** to enter a reason and return to Draft. Adjust the order
+and submit it again, then select **Issue corrected invoice**. The original stays
+active until the corrected invoice is issued. The history then identifies its
+replacement by number. Use **Void invoice** to cancel the bill outright and keep
+it in the order history. These actions require an
 Unpaid order and confirmation that the invoice has yet to be shared. Agree the
 process for invoices already sent or paid before supporting those corrections.
 Email delivery, refund records and reporting remain future work.

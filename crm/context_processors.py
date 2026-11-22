@@ -4,7 +4,9 @@ from crm.views.common import return_url
 
 
 def system_settings(request):
-    settings = SystemSettings.get_solo()
+    settings = getattr(request, "crm_settings", None)
+    if settings is None:
+        settings = SystemSettings.get_solo()
     return {
         "system_settings": settings,
         "company_name": settings.company_name,

@@ -29,7 +29,7 @@ class SystemSettingsForm(SettingsDetailsForm):
 
     business_timezone = forms.CharField(
         initial="Africa/Johannesburg",
-        help_text="Used for due-today and overdue work. For example: Africa/Johannesburg, Europe/London, or America/New_York.",
+        help_text="Used for displayed timestamps and work deadlines. Examples include Africa/Johannesburg, Europe/London, and America/New_York.",
     )
 
     def clean_business_timezone(self):
@@ -105,7 +105,7 @@ class InvoiceSettingsForm(SettingsDetailsForm):
         max_length=12,
         initial="INV",
         label="Invoice prefix",
-        help_text="For example INV. The sample uses INV-PREVIEW; numbering comes later.",
+        help_text="With the INV prefix, a new invoice number could be INV-20261122-000004.",
     )
 
     def clean_invoice_prefix(self):

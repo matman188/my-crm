@@ -5,7 +5,6 @@ from decimal import Decimal
 from html import escape
 from io import BytesIO
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 import reportlab
 from PIL import Image as PILImage, UnidentifiedImageError
@@ -129,9 +128,7 @@ def build_sample_invoice(settings, *, logo=None, long=False):
     )
     snapshot = {
         "business": invoice_business_details(settings),
-        "issue_date": timezone.localdate(
-            timezone=ZoneInfo(settings.business_timezone)
-        ).isoformat(),
+        "issue_date": timezone.localdate(timezone=settings.business_zone).isoformat(),
         "currency": settings.default_currency,
         "order_reference": "SO-SAMPLE",
         "bill_to": [
@@ -479,7 +476,9 @@ def render_invoice(
         canvas.setFillColor(muted)
         if doc.page > 1:
             company = business_details["company_name"]
-            while pdfmetrics.stringWidth(company, "Invoice", 8) > width - 140:
+            title_width = pdfmetrics.stringWidth(document_title, "Invoice", 8)
+            company_width = width - max(140, title_width + 12)
+            while pdfmetrics.stringWidth(company, "Invoice", 8) > company_width:
                 company = company[:-5] + "..."
             canvas.drawString(20 * mm, A4[1] - 13 * mm, company)
             canvas.drawRightString(A4[0] - 20 * mm, A4[1] - 13 * mm, document_title)

@@ -1,5 +1,5 @@
 from collections import defaultdict
-from zoneinfo import ZoneInfo
+from datetime import date
 
 from django.db import transaction
 from django.db.models import F
@@ -10,6 +10,12 @@ from crm.models import Invoice, ServiceOrder, SystemSettings
 
 
 INVOICE_STAGES = (ServiceOrder.Status.IN_PROGRESS, ServiceOrder.Status.COMPLETE)
+INVOICE_ACTION_LABELS = {
+    "generate": "Generate invoice",
+    "revise": "Correct invoice",
+    "replace": "Issue corrected invoice",
+    "void": "Void invoice",
+}
 
 
 class InvoiceConflict(Exception):
@@ -57,9 +63,7 @@ def order_invoice_snapshot(order, settings, issued_at):
     customer_name = f"{customer.first_name} {customer.last_name}".strip()
     return {
         "business": invoice_business_details(settings),
-        "issue_date": issued_at.astimezone(ZoneInfo(settings.business_timezone))
-        .date()
-        .isoformat(),
+        "issue_date": timezone.localdate(issued_at, settings.business_zone).isoformat(),
         "currency": order.currency,
         "order_reference": order.reference,
         "bill_to": [
@@ -118,13 +122,14 @@ def apply_invoice_action(order_id, action, *, user, revision, invoice_id, reason
                 now,
                 order.invoice_revision_reason,
             )
-        # The global invoice primary key supplies the sequence. Store the
-        # issue-time prefix separately so settings changes preserve old numbers.
+        # The primary key supplies the global sequence. The other segments use
+        # the prefix and company-local date captured when the invoice is issued.
         result = Invoice.objects.create(
             order=order,
             issued_by=user,
             issued_at=now,
             number_prefix=settings.invoice_prefix,
+            number_date=date.fromisoformat(snapshot["issue_date"]),
             snapshot=snapshot,
             logo=settings.invoice_logo.name or "",
             replaces=active,

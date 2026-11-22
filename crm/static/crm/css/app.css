@@ -1232,6 +1232,34 @@ body {
     color: #62428a;
 }
 
+.invoice-status {
+    gap: .4em;
+    border: 1px solid transparent;
+    white-space: nowrap;
+}
+
+.invoice-status-icon {
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.invoice-status-issued {
+    background: var(--panel);
+    color: #fff;
+}
+
+.invoice-status-void {
+    background: #fff0c7;
+    border-color: #8a5c00;
+    color: #513500;
+}
+
+.invoice-status-superseded {
+    background: #eef2f7;
+    border: 1px dashed #718092;
+    color: #4e5f6f;
+}
+
 .order-save-bar {
     border-top: 1px solid var(--border);
     padding-top: 20px;
@@ -1247,6 +1275,11 @@ body {
     overflow-x: auto;
     margin-top: 20px;
 }
+
+.order-list-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.order-list-select { max-width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: #fff; color: var(--text); font: inherit; }
+.order-list-save { padding: 6px 10px; border-radius: 8px; }
+.order-list-save:disabled { opacity: .5; cursor: default; }
 
 .money {
     white-space: nowrap;

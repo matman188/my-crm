@@ -1224,7 +1224,7 @@ class ServiceOrderTests(TestCase):
                     html=True,
                 )
 
-    def test_refunded_orders_have_a_list_badge_and_can_be_filtered(self):
+    def test_refunded_orders_show_their_status_and_can_be_filtered(self):
         refunded = self.create_order(
             dict(
                 self.payload(),
@@ -1248,10 +1248,13 @@ class ServiceOrderTests(TestCase):
         self.assertContains(
             response,
             'class="role-badge order-payment-refunded">Refunded</span>',
-            count=2,
+            count=1,
         )
         self.assertContains(
-            response, '<option value="refunded" selected>Refunded</option>', html=True
+            response,
+            '<option value="refunded" selected>Refunded</option>',
+            html=True,
+            count=2,
         )
         response = self.client.get(
             reverse("orders"), {"payment_status": "refunded", "status": "complete"}

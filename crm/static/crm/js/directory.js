@@ -5,7 +5,7 @@
 
     directory.addEventListener("click", event => {
         if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-        if (event.target.closest("a, button, input, label, select, details, .directory-selection-cell") || window.getSelection()?.toString()) return;
+        if (event.target.closest("a, button, input, label, select, form, details, .directory-selection-cell") || window.getSelection()?.toString()) return;
         event.target.closest("[data-directory-row]")?.querySelector("[data-directory-link]")?.click();
     });
 

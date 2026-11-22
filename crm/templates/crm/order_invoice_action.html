@@ -10,12 +10,12 @@
     {% if invoice_action == 'generate' %}
         <p>Issue a numbered invoice for {{ order.customer }} for {{ order.currency }} {{ order.total|floatformat:2 }}.</p>
     {% elif invoice_action == 'revise' %}
-        <p>Move the order to Draft to edit its billing details. Invoice {{ active_invoice.number }} remains active until the replacement is issued.</p>
+        <p>Move the order to Draft, edit its billing details, then submit it again to issue the corrected invoice. Invoice {{ active_invoice.number }} remains active until then.</p>
     {% elif invoice_action == 'replace' %}
-        <p>Issue a new invoice for {{ order.currency }} {{ order.total|floatformat:2 }} and mark {{ active_invoice.number }} as superseded.</p>
-        <p>Revision reason: {{ order.invoice_revision_reason }}</p>
+        <p>Issue a new invoice for {{ order.currency }} {{ order.total|floatformat:2 }}. The order history will show that it replaced {{ active_invoice.number }}.</p>
+        <p>Reason for correction: {{ order.invoice_revision_reason }}</p>
     {% else %}
-        <p>Void invoice {{ active_invoice.number }} and keep it in the order history.</p>
+        <p>Cancel the bill for invoice {{ active_invoice.number }}. It will stay in the order history as Void.</p>
     {% endif %}
     <form method="post" class="form-grid">
         {% csrf_token %}

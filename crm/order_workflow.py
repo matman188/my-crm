@@ -1,5 +1,15 @@
 from crm.models import ServiceOrder
 
+ASSIGNMENT_AND_PAYMENT_STAGES = (
+    ServiceOrder.Status.IN_PROGRESS,
+    ServiceOrder.Status.COMPLETE,
+)
+WORKFLOW_FIELD_STAGES = {
+    "assigned_to": ASSIGNMENT_AND_PAYMENT_STAGES,
+    "payment_status": ASSIGNMENT_AND_PAYMENT_STAGES,
+    "collected": (ServiceOrder.Status.COMPLETE,),
+}
+
 # These are the permitted transitions, shared by validation and the action buttons.
 ORDER_ACTIONS = {
     ServiceOrder.Status.DRAFT: (

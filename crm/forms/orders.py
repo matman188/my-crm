@@ -16,7 +16,7 @@ from crm.models import (
     ServiceOrder,
     SystemSettings,
 )
-from crm.order_workflow import ORDER_ACTIONS, SAVE_LABELS
+from crm.order_workflow import ORDER_ACTIONS, SAVE_LABELS, WORKFLOW_FIELD_STAGES
 from crm.order_queries import WORK_VIEWS
 
 
@@ -42,7 +42,8 @@ class CustomerChoiceField(forms.ModelChoiceField):
 
 
 class AssignedToChoiceField(forms.ModelChoiceField):
-    def label_from_instance(self, user):
+    @staticmethod
+    def label_from_instance(user):
         return (
             f"{user.get_full_name()} ({user.username})"
             if user.get_full_name()
@@ -50,7 +51,52 @@ class AssignedToChoiceField(forms.ModelChoiceField):
         )
 
 
-class ServiceOrderForm(forms.ModelForm):
+def order_assignees(current_id=None):
+    return (
+        get_user_model()
+        .objects.filter(Q(is_active=True) | Q(pk=current_id))
+        .order_by("first_name", "last_name", "username")
+    )
+
+
+class OrderWorkflowForm(forms.ModelForm):
+    assigned_to = AssignedToChoiceField(
+        queryset=get_user_model().objects.none(),
+        required=False,
+        empty_label="Unassigned",
+        label="Assigned To",
+    )
+    revision = forms.IntegerField(min_value=1, widget=forms.HiddenInput, required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.target_status = self.instance.status
+        self.fields["assigned_to"].queryset = order_assignees(
+            self.instance.assigned_to_id
+        )
+        for name, stages in WORKFLOW_FIELD_STAGES.items():
+            self.fields[name].disabled = self.instance.status not in stages
+        if self.instance.pk:
+            self.fields["revision"].required = True
+            self.initial["revision"] = self.instance.revision
+
+    def clean(self):
+        data = super().clean()
+        if self.target_status == ServiceOrder.Status.COMPLETE and not data.get(
+            "assigned_to"
+        ):
+            self.add_error(
+                "assigned_to", "Assign a user before marking the order Complete."
+            )
+        return data
+
+    class Meta:
+        model = ServiceOrder
+        fields = ("assigned_to", "collected", "payment_status")
+        labels = {"payment_status": "Payment status"}
+
+
+class ServiceOrderForm(OrderWorkflowForm):
     customer_mode = forms.ChoiceField(
         choices=[
             ("existing", "Choose an existing customer"),
@@ -63,10 +109,6 @@ class ServiceOrderForm(forms.ModelForm):
     customer = CustomerChoiceField(
         queryset=Customer.objects.none(), required=False, widget=forms.HiddenInput
     )
-    assigned_to = AssignedToChoiceField(
-        queryset=get_user_model().objects.none(), required=False
-    )
-    revision = forms.IntegerField(min_value=1, widget=forms.HiddenInput, required=False)
 
     def __init__(self, *args, active_invoice=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -99,25 +141,7 @@ class ServiceOrderForm(forms.ModelForm):
         self.fields["customer"].queryset = Customer.objects.filter(
             available_customers
         ).order_by("first_name", "last_name", "pk")
-        available_users = get_user_model().objects.filter(is_active=True)
-        if self.instance.assigned_to_id:
-            available_users = get_user_model().objects.filter(
-                Q(is_active=True) | Q(pk=self.instance.assigned_to_id)
-            )
-        self.fields["assigned_to"].queryset = available_users.order_by(
-            "first_name", "last_name", "username"
-        )
-        self.fields["assigned_to"].empty_label = "Unassigned"
-        self.fields["assigned_to"].label = "Assigned To"
         self.fields["notes"].label = "Order notes"
-        if self.original_status in (
-            ServiceOrder.Status.DRAFT,
-            ServiceOrder.Status.CANCELLED,
-        ):
-            for name in ("assigned_to", "payment_status"):
-                self.fields[name].disabled = True
-        if self.original_status != ServiceOrder.Status.COMPLETE:
-            self.fields["collected"].disabled = True
         if self.locked:
             for name in ("customer_mode", "customer"):
                 self.fields[name].disabled = True
@@ -128,9 +152,6 @@ class ServiceOrderForm(forms.ModelForm):
             self.fields["notes"].help_text = (
                 "Add a cancellation reason or other internal notes."
             )
-        if self.instance.pk:
-            self.fields["revision"].required = True
-            self.initial["revision"] = self.instance.revision
 
     def clean(self):
         data = super().clean()
@@ -147,16 +168,9 @@ class ServiceOrderForm(forms.ModelForm):
             "customer"
         ):
             self.add_error("customer", "Choose a customer or create a new one.")
-        if self.target_status == ServiceOrder.Status.COMPLETE and not data.get(
-            "assigned_to"
-        ):
-            self.add_error(
-                "assigned_to", "Assign a user before marking the order Complete."
-            )
         return data
 
-    class Meta:
-        model = ServiceOrder
+    class Meta(OrderWorkflowForm.Meta):
         fields = (
             "customer",
             "assigned_to",
@@ -164,7 +178,6 @@ class ServiceOrderForm(forms.ModelForm):
             "payment_status",
             "notes",
         )
-        labels = {"payment_status": "Payment status"}
         widgets = {
             "notes": forms.Textarea(attrs=ORDER_NOTES_ATTRS),
         }
@@ -382,8 +395,8 @@ class OrderEditor:
         self.invoices = (
             list(
                 self.instance.invoices.select_related(
-                    "issued_by", "closed_by", "replaces"
-                ).defer("replaces__snapshot")
+                    "issued_by", "closed_by", "replaces", "replacement"
+                ).defer("snapshot", "replaces__snapshot", "replacement__snapshot")
             )
             if self.instance.pk
             else []

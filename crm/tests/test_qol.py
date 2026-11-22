@@ -532,6 +532,7 @@ class QualityOfLifeTests(TestCase):
         customers = self.client.get(
             reverse("customers"), {"q": "Alex"}
         ).content.decode()
+        self.make_order(status="in_progress", assigned_to=self.worker)
         orders = self.client.get(
             reverse("orders"), {"status": "in_progress"}
         ).content.decode()

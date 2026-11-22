@@ -1,5 +1,8 @@
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
 from django.contrib.auth import get_user_model
 from django.db import models
+from django.utils import timezone
 
 
 class SystemSettings(models.Model):
@@ -53,6 +56,13 @@ class SystemSettings(models.Model):
     def get_solo(cls):
         settings, _ = cls.objects.get_or_create(pk=1)
         return settings
+
+    @property
+    def business_zone(self):
+        try:
+            return ZoneInfo(self.business_timezone)
+        except (ValueError, ZoneInfoNotFoundError):
+            return timezone.get_default_timezone()
 
     def __str__(self):
         return "System Settings"

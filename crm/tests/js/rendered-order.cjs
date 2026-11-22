@@ -160,6 +160,32 @@ async function boot(html, url) {
     assert.equal(openedOrder, true);
     checks.push("order rows open the form and leave the item preview operable");
 
+    const [firstEdit, otherEdit] = orders.w.document.querySelectorAll("[data-order-list-edit]");
+    const payment = firstEdit.elements.namedItem("payment_status");
+    const otherPayment = otherEdit.elements.namedItem("payment_status");
+    const rowSave = firstEdit.querySelector("[data-order-row-save]");
+    assert.equal(rowSave.disabled, true);
+    openedOrder = false;
+    payment.click();
+    assert.equal(openedOrder, false);
+    orders.change(payment, "paid");
+    assert.equal(rowSave.disabled, false);
+    assert.equal(new orders.w.FormData(firstEdit).get("payment_status"), "paid");
+    assert.equal(firstEdit.elements.namedItem("next").value, "/orders/?status=in_progress");
+    orders.change(otherPayment, "refunded");
+    firstEdit.requestSubmit(rowSave);
+    assert.equal(orders.q("[data-workspace-confirm]").open, true);
+    orders.q("[data-workspace-cancel]").click();
+    assert.equal(otherPayment.value, "refunded");
+    orders.change(otherPayment, "unpaid");
+    let savedRow = null;
+    orders.w.document.addEventListener("submit", event => {
+        if (!event.defaultPrevented) savedRow = event.target;
+    });
+    firstEdit.requestSubmit(rowSave);
+    assert.equal(savedRow, firstEdit);
+    checks.push("inline order controls save the selected row and protect other unsaved rows");
+
     const directory = await boot(fixtures.customers, "/customers/?q=Alex&page=2");
     const recordLink = directory.q("[data-directory-link]");
     assert.equal(new URL(recordLink.href).searchParams.get("next"), "/customers/?q=Alex&page=2");

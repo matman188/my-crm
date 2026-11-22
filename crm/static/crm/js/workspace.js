@@ -50,6 +50,10 @@
         const state = tracked.get(form);
         if (state) {
             const dirty = isDirty(form);
+            if (state.rowSave) {
+                state.rowSave.disabled = !dirty;
+                return;
+            }
             state.label.textContent = dirty ? "Unsaved changes" : location.pathname.includes("/create/") ? "New record" : "Saved";
             state.label.classList.toggle("is-dirty", dirty);
         }
@@ -62,6 +66,9 @@
         toastTimer = setTimeout(() => { toast.hidden = true; }, 5000);
     }
     const hasUnsaved = () => [...tracked.keys()].some(isDirty) || Boolean(document.querySelector('[data-customer-dialog][data-unsaved-changes="true"]'));
+    function rememberListScroll() {
+        try { sessionStorage.setItem("crm-scroll:" + location.pathname + location.search, String(window.scrollY)); } catch { /* Storage is optional. */ }
+    }
     window.crmUX = { confirm: confirmAction, notify, isDirty, allowNavigation() { navigating = true; } };
     window.addEventListener("beforeunload", event => {
         if (!navigating && hasUnsaved()) { event.preventDefault(); event.returnValue = ""; }
@@ -72,7 +79,7 @@
         const destination = new URL(link.href, location.href);
         if (!["http:", "https:"].includes(destination.protocol) || destination.href === location.href || (destination.pathname === location.pathname && destination.search === location.search && destination.hash)) return;
         if (/^\/(orders|customers|products|services|product-categories|users)\/$/.test(location.pathname)) {
-            try { sessionStorage.setItem("crm-scroll:" + location.pathname + location.search, String(window.scrollY)); } catch { /* Storage is optional. */ }
+            rememberListScroll();
         }
         if (!hasUnsaved()) return;
         event.preventDefault();
@@ -88,7 +95,10 @@
         if (form.dataset.submitting === "true") { event.preventDefault(); return; }
         const button = event.submitter;
         const leavingDirty = new URL(form.action, location.href).pathname === "/logout/" && hasUnsaved();
-        const message = button?.dataset.confirm || (leavingDirty ? "Log out and discard your unsaved changes?" : "");
+        const quickOrderSave = form.matches("[data-order-list-edit]");
+        const otherRowsDirty = quickOrderSave && [...tracked.keys()].some(other => other !== form && isDirty(other));
+        const message = button?.dataset.confirm || (leavingDirty ? "Log out and discard your unsaved changes?" : "") ||
+            (otherRowsDirty ? "Save this order and discard unsaved changes on the other rows?" : "");
         const ownConfirmation = form.matches("[data-order-editor], #delete-draft-form");
         if (message && !ownConfirmation && approved.get(form) !== button) {
             event.preventDefault();
@@ -99,6 +109,7 @@
             }
             return;
         }
+        if (quickOrderSave) rememberListScroll();
         navigating = true;
         form.dataset.submitting = "true";
         form.setAttribute("aria-busy", "true");
@@ -142,9 +153,19 @@
         document.querySelectorAll('form[method="post"]').forEach(form => {
             addNext(form, next || (list ? location.pathname + location.search : ""));
             if (form.matches("[data-directory-selection]") || form.closest("dialog") || !form.querySelector('input:not([type="hidden"]):not([type="submit"]), textarea, select')) return;
-            const label = document.createElement("p"); label.className = "save-state"; label.setAttribute("role", "status"); form.prepend(label);
-            tracked.set(form, { initial: signature(form), invalid: Boolean(form.querySelector('[aria-invalid="true"], .non-field-errors:not([hidden])')), label });
-            ["input", "change", "crm:changed"].forEach(type => form.addEventListener(type, () => { updateState(form); markRequired(form); }));
+            const rowSave = form.querySelector("[data-order-row-save]");
+            const label = rowSave ? null : document.createElement("p");
+            if (label) { label.className = "save-state"; label.setAttribute("role", "status"); form.prepend(label); }
+            tracked.set(form, { initial: signature(form), invalid: Boolean(form.querySelector('[aria-invalid="true"], .non-field-errors:not([hidden])')), label, rowSave });
+            const eventTargets = rowSave
+                ? [form, ...Array.from(form.elements).filter(field => !form.contains(field))]
+                : [form];
+            const refreshForm = () => { updateState(form); markRequired(form); };
+            for (const target of eventTargets) {
+                for (const type of ["input", "change", "crm:changed"]) {
+                    target.addEventListener(type, refreshForm);
+                }
+            }
             updateState(form);
             const invalid = [...form.querySelectorAll('[aria-invalid="true"]')].filter(field => !field.disabled && field.type !== "hidden" && !field.closest("dialog"));
             if (invalid.length) {

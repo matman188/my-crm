@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timezone
 from io import BytesIO
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -8,6 +8,7 @@ from django.core.files.base import ContentFile
 from django.db import IntegrityError
 from django.test import Client, TestCase
 from django.urls import reverse
+from django.utils import timezone as django_timezone
 from PIL import Image
 from pypdf import PdfReader
 
@@ -22,7 +23,7 @@ from crm.models import (
     ServiceOrder,
     SystemSettings,
 )
-from crm.order_invoices import apply_invoice_action
+from crm.order_invoices import apply_invoice_action, order_invoice_snapshot
 
 
 class OrderInvoiceTests(TestCase):
@@ -115,7 +116,12 @@ class OrderInvoiceTests(TestCase):
         )
         self.assertEqual(Invoice.objects.count(), 1)
         self.assertEqual(invoice.issued_by, self.user)
-        self.assertContains(self.client.get(self.edit_url), invoice.number)
+        order_page = self.client.get(self.edit_url)
+        self.assertContains(order_page, invoice.number)
+        self.assertContains(order_page, 'invoice-status-issued">')
+        self.assertContains(
+            order_page, '<span class="invoice-status-icon" aria-hidden="true">✓</span>'
+        )
         response = self.client.get(self.pdf_url(invoice))
         text = self.pdf_text(response)
         for value in (
@@ -170,9 +176,24 @@ class OrderInvoiceTests(TestCase):
                 self.pdf_text(self.client.get(self.pdf_url(invoice))), original_pdf
             )
 
-    def test_revision_edits_order_then_replaces_old_invoice_once(self):
-        invoice = self.issue()
+    def test_revision_edits_order_then_replaces_legacy_invoice_once(self):
+        settings = SystemSettings.get_solo()
+        issued_at = django_timezone.now()
+        invoice = Invoice.objects.create(
+            order=self.order,
+            issued_by=self.user,
+            issued_at=issued_at,
+            number_prefix=settings.invoice_prefix,
+            snapshot=order_invoice_snapshot(self.order, settings, issued_at),
+        )
+        original_number = f"INV-{invoice.pk:06d}"
+        self.assertEqual(invoice.number, original_number)
         order_page = self.client.get(self.edit_url)
+        self.assertContains(order_page, "Correct invoice")
+        self.assertContains(order_page, "Void invoice")
+        self.assertContains(
+            self.client.get(self.action_url("revise")), "Correct invoice"
+        )
         self.assertNotContains(order_page, 'value="return_to_draft"')
         self.assertNotContains(order_page, 'value="cancel"')
         for action in ("return_to_draft", "cancel"):
@@ -198,7 +219,10 @@ class OrderInvoiceTests(TestCase):
         invoice.refresh_from_db()
         self.assertEqual(self.order.status, ServiceOrder.Status.DRAFT)
         self.assertEqual(invoice.status, Invoice.Status.ISSUED)
-        self.assertNotContains(self.client.get(self.edit_url), "Delete draft")
+        order_page = self.client.get(self.edit_url)
+        self.assertContains(order_page, "Correction in progress")
+        self.assertNotContains(order_page, "Issue corrected invoice")
+        self.assertNotContains(order_page, "Delete draft")
         delete = self.client.post(
             reverse("delete_order", args=[self.order.pk]),
             {"revision": self.order.revision},
@@ -230,8 +254,10 @@ class OrderInvoiceTests(TestCase):
         )
         self.assertEqual(response.status_code, 302)
         self.order.refresh_from_db()
-        self.assertContains(self.client.get(self.edit_url), "Replace invoice")
-        self.assertEqual(self.client.get(self.action_url("replace")).status_code, 200)
+        self.assertContains(self.client.get(self.edit_url), "Issue corrected invoice")
+        self.assertContains(
+            self.client.get(self.action_url("replace")), "Issue corrected invoice"
+        )
         payload = {
             "invoice": invoice.pk,
             "revision": self.order.revision,
@@ -249,8 +275,23 @@ class OrderInvoiceTests(TestCase):
         self.assertEqual(invoice.status, Invoice.Status.SUPERSEDED)
         self.assertEqual(invoice.closure_reason, "Customer requested an extra service")
         self.assertEqual(invoice.closed_by, self.user)
-        self.assertNotEqual(invoice.number, replacement.number)
-        self.assertIn("32.00", self.pdf_text(self.client.get(self.pdf_url(invoice))))
+        self.assertEqual(invoice.number, original_number)
+        self.assertGreater(replacement.pk, invoice.pk)
+        date_segment = replacement.snapshot["issue_date"].replace("-", "")
+        self.assertEqual(replacement.number, f"INV-{date_segment}-{replacement.pk:06d}")
+        order_page = self.client.get(self.edit_url)
+        self.assertContains(order_page, 'invoice-status-superseded">')
+        self.assertContains(order_page, f"Replaced by {replacement.number}")
+        self.assertNotContains(order_page, "Superseded")
+        self.assertContains(
+            order_page, '<span class="invoice-status-icon" aria-hidden="true">↪</span>'
+        )
+        original_pdf = self.client.get(self.pdf_url(invoice), {"download": "1"})
+        self.assertIn(
+            f'filename="{original_number}.pdf"', original_pdf["Content-Disposition"]
+        )
+        self.assertIn(original_number, self.pdf_text(original_pdf))
+        self.assertIn("32.00", self.pdf_text(original_pdf))
         self.assertIn(
             "44.00", self.pdf_text(self.client.get(self.pdf_url(replacement)))
         )
@@ -317,8 +358,58 @@ class OrderInvoiceTests(TestCase):
         invoice.refresh_from_db()
         self.assertEqual(invoice.status, Invoice.Status.VOID)
         self.assertEqual(invoice.closure_reason, "Order cancelled")
-        self.assertContains(self.client.get(self.edit_url), 'value="cancel"')
+        order_page = self.client.get(self.edit_url)
+        self.assertContains(order_page, 'invoice-status-void">')
+        self.assertContains(
+            order_page, '<span class="invoice-status-icon" aria-hidden="true">×</span>'
+        )
+        self.assertContains(order_page, 'value="cancel"')
         self.assertEqual(self.client.get(self.pdf_url(invoice)).status_code, 200)
+
+    def test_invoice_history_and_order_dates_use_the_current_company_timezone(self):
+        issued_at = datetime(2026, 11, 21, 23, 30, tzinfo=timezone.utc)
+        closed_at = datetime(2026, 11, 22, 13, 13, tzinfo=timezone.utc)
+        ServiceOrder.objects.filter(pk=self.order.pk).update(created_at=issued_at)
+        with patch(
+            "crm.order_invoices.timezone", wraps=django_timezone
+        ) as invoice_clock:
+            invoice_clock.now.return_value = issued_at
+            invoice = self.issue()
+            invoice_clock.now.return_value = closed_at
+            response = self.client.post(
+                self.action_url("void"),
+                {
+                    "invoice": invoice.pk,
+                    "revision": self.order.revision,
+                    "reason": "Cancelled before sharing",
+                    "not_shared": "on",
+                },
+            )
+        self.assertRedirects(response, self.edit_url, fetch_redirect_response=False)
+
+        order_page = self.client.get(self.edit_url)
+        self.assertContains(order_page, "Issued 2026-11-22 01:30 SAST by operator")
+        self.assertContains(order_page, "Void 2026-11-22 15:13 SAST by operator")
+        self.assertContains(self.client.get(reverse("orders")), "22 Nov 2026")
+
+        SystemSettings.objects.filter(pk=1).update(
+            business_timezone="America/New_York", invoice_prefix="NEW"
+        )
+        order_page = self.client.get(self.edit_url)
+        original_number = f"INV-20261122-{invoice.pk:06d}"
+        self.assertContains(order_page, original_number)
+        self.assertContains(order_page, "Issued 2026-11-21 18:30 EST by operator")
+        self.assertContains(order_page, "Void 2026-11-22 08:13 EST by operator")
+        self.assertContains(self.client.get(reverse("orders")), "21 Nov 2026")
+        self.assertIn(
+            "Issue date: 22 Nov 2026",
+            self.pdf_text(self.client.get(self.pdf_url(invoice))),
+        )
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.number, original_number)
+        self.assertEqual(invoice.number_date, date(2026, 11, 22))
+        self.assertEqual(invoice.issued_at, issued_at)
+        self.assertEqual(invoice.closed_at, closed_at)
 
     def test_stage_permissions_stale_revision_and_csrf_are_enforced(self):
         for status in (ServiceOrder.Status.DRAFT, ServiceOrder.Status.CANCELLED):
